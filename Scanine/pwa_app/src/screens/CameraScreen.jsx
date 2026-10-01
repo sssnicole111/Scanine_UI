@@ -74,6 +74,14 @@ const ANALYZING_STEPS = [
 // capture screen rather than replacing it, so the video element never
 // unmounts (and therefore never loses its ref) just because a transient
 // error occurred.
+// Shown under the upload dropzone — the three things that most often
+// decide whether a frame survives the quality gate.
+const UPLOAD_TIPS = [
+  'Fill the frame with the affected area',
+  'Use daylight or bright indoor lighting',
+  'Hold steady — avoid motion blur'
+]
+
 const CAMERA_ERROR_COPY = {
   denied: {
     title: 'Camera access denied',
@@ -869,22 +877,15 @@ export default function CameraScreen({ onResult, onBack }) {
   }
 
   // ── Render: Upload mode ──────────────────────────────────────
+  // The placeholder now lives in .ui-layer (not .viewfinder-wrap) so the
+  // dropzone, the tips and the footer share one flex column and space
+  // themselves; the wrap is just the navy backdrop until a photo lands.
   if (mode === 'upload') {
+    const hasPhoto = Boolean(uploadedImage)
     return (
       <div className="camera-screen">
-        <div className="viewfinder-wrap">
-          {uploadedImage ? (
-            <img src={uploadedImage} alt="Selected" className="viewfinder" />
-          ) : (
-            <div className="upload-placeholder">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
-              <p>Choose a photo of the affected area</p>
-            </div>
-          )}
+        <div className="viewfinder-wrap upload-bg">
+          {hasPhoto && <img src={uploadedImage} alt="Selected" className="viewfinder" />}
         </div>
 
         <div className="ui-layer">
@@ -894,7 +895,11 @@ export default function CameraScreen({ onResult, onBack }) {
               <button className="ui-close-btn" onClick={switchToCamera}>✕</button>
             </div>
             <p className="ui-subtitle">
-              {loadingModel ? 'Loading AI model...' : dogStatusMessage ? 'Please upload a photo of a dog.' : 'Pick a clear, well-lit photo from your gallery.'}
+              {loadingModel
+                ? 'Loading AI model…'
+                : dogStatusMessage
+                  ? 'Please upload a photo of a dog.'
+                  : 'Pick a clear, well-lit photo from your gallery.'}
             </p>
           </div>
 
@@ -905,14 +910,47 @@ export default function CameraScreen({ onResult, onBack }) {
             {dogStatusMessage && (
               <div className="model-error-banner warn">{dogStatusMessage}</div>
             )}
+
+            {!hasPhoto && (
+              <>
+                <button
+                  className="upload-dropzone"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <span className="upload-dropzone-icon" aria-hidden="true">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="17 8 12 3 7 8"></polyline>
+                      <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                  </span>
+                  <span className="upload-dropzone-title">Choose a photo of the affected area</span>
+                  <span className="upload-dropzone-hint">JPG or PNG · tap to browse</span>
+                </button>
+
+                <ul className="upload-tips">
+                  {UPLOAD_TIPS.map((tip) => (
+                    <li key={tip}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      <span>{tip}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
 
           <div className="ui-footer">
             <div className="ui-actions">
-              <button className="ui-action-btn secondary" onClick={() => fileInputRef.current?.click()}>
-                {uploadedImage ? 'Change photo' : 'Choose photo'}
+              <button
+                className={`ui-action-btn ${hasPhoto ? 'ghost' : 'primary'}`}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {hasPhoto ? 'Change photo' : 'Choose photo'}
               </button>
-              {uploadedImage && (
+              {hasPhoto && (
                 <button className="ui-action-btn primary" onClick={() => runUploadInference()} disabled={analyzing || loadingModel}>
                   {analyzing ? 'Analyzing…' : 'Analyze photo'}
                 </button>
@@ -1032,27 +1070,45 @@ export default function CameraScreen({ onResult, onBack }) {
       </div>
 
       {errorCopy && (
-        <div className="camera-error-overlay">
-          <button className="ui-close-btn gate-close" onClick={onBack} aria-label="Back to home">✕</button>
-          <div className="gate-body">
-            <div className="gate-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                <circle cx="12" cy="13" r="4"></circle>
-              </svg>
-            </div>
-            <h1 className="gate-title">{errorCopy.title}</h1>
-            <p className="gate-desc">{errorCopy.desc || cameraError || 'Something unexpected happened. Try again, or use a photo instead.'}</p>
-          </div>
-          <div className="gate-actions">
-            {cameraErrorReason !== 'notfound' && cameraErrorReason !== 'insecure' && (
-              <button className="btn-allow" onClick={requestCameraAccess} disabled={requestingPermission}>
-                {requestingPermission ? 'Requesting…' : 'Try again'}
+        <div className="camera-sheet-scrim">
+          <div
+            className="camera-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="camera-sheet-title"
+          >
+            <span className="camera-sheet-grip" aria-hidden="true" />
+
+            <div className="camera-sheet-head">
+              <span className="camera-sheet-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                  <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34m-7.72-2.06a4 4 0 1 1-5.56-5.56"></path>
+                </svg>
+              </span>
+              <h2 className="camera-sheet-title" id="camera-sheet-title">{errorCopy.title}</h2>
+              <button className="camera-sheet-close" onClick={onBack} aria-label="Back to home">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
               </button>
-            )}
-            <button className="btn-use-photo" onClick={switchToUpload}>
-              Use a photo instead
-            </button>
+            </div>
+
+            <p className="camera-sheet-desc">
+              {errorCopy.desc || cameraError || 'Something unexpected happened. Try again, or use a photo instead.'}
+            </p>
+
+            <div className="camera-sheet-actions">
+              {cameraErrorReason !== 'notfound' && cameraErrorReason !== 'insecure' && (
+                <button className="camera-sheet-primary" onClick={requestCameraAccess} disabled={requestingPermission}>
+                  {requestingPermission ? 'Requesting…' : 'Try again'}
+                </button>
+              )}
+              <button className="camera-sheet-secondary" onClick={switchToUpload}>
+                Use a photo instead
+              </button>
+            </div>
           </div>
         </div>
       )}

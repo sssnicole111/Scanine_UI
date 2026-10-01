@@ -3,6 +3,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   background: linear-gradient(180deg, #EEF2F6 0%, #E7ECF2 100%);
   opacity: 0;
   transform: translateY(10px);
@@ -16,7 +17,7 @@
 
 /* Header */
 .home-header {
-  padding: 52px var(--space-6) 0;
+  padding: 0 var(--space-6);
 }
 
 .home-title-row {
@@ -67,10 +68,10 @@
 
 /* Hero / screening card */
 .home-hero {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  padding: var(--space-6);
+  align-items: flex-start;
+  padding: var(--space-6) var(--space-6) 0;
 }
 
 .screening-card {
@@ -155,7 +156,7 @@
 
 /* Footer */
 .home-footer {
-  padding: 0 var(--space-6) 40px;
+  padding: var(--space-8) var(--space-6) 0;
   text-align: center;
 }
 

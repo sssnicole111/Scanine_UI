@@ -45,6 +45,7 @@ export default function SplashScreen({ onStart }) {
         <p>Runs entirely on this device. No internet connection required.</p>
       </div>
 
+
     </div>
   )
 }

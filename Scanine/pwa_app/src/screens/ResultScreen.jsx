@@ -9,6 +9,7 @@ const URGENCY_TEXT = {
 
 export default function ResultScreen({ result, onScanAgain, onHome }) {
   const [view, setView] = useState('photo') // 'photo' | 'heatmap'
+  const [showProgress, setShowProgress] = useState(false)
 
   if (!result) return null
 
@@ -30,9 +31,23 @@ export default function ResultScreen({ result, onScanAgain, onHome }) {
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
         </button>
-        <span className="result-timestamp">
-          Today · {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-        </span>
+        <div className="result-meta">
+          <span className="result-timestamp">
+            Today · {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+          </span>
+          <button
+            className="progress-badge"
+            onClick={() => setShowProgress(true)}
+            aria-label="Two conditions are still in development"
+            title="Two conditions are still in development"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="7.5" x2="12" y2="13"></line>
+              <line x1="12" y1="16.6" x2="12.01" y2="16.6"></line>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="result-body">
@@ -97,6 +112,44 @@ export default function ResultScreen({ result, onScanAgain, onHome }) {
           </svg>
         </button>
       </div>
+
+      {showProgress && (
+        <div className="progress-sheet-scrim" onClick={() => setShowProgress(false)}>
+          <div
+            className="progress-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="progress-sheet-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="progress-sheet-grip" aria-hidden="true" />
+            <h2 className="progress-sheet-title" id="progress-sheet-title">In development</h2>
+            <p className="progress-sheet-lead">
+              Scanine currently reports ringworm and dermatologically normal skin.
+              Two conditions from the full model are still being trained:
+            </p>
+
+            <ul className="progress-list">
+              <li>
+                <span className="progress-list-name">Flea Allergy Dermatitis</span>
+                <span className="progress-list-sub">FAD — itch and hair loss from flea bite hypersensitivity</span>
+              </li>
+              <li>
+                <span className="progress-list-name">Hotspot</span>
+                <span className="progress-list-sub">Acute moist dermatitis</span>
+              </li>
+            </ul>
+
+            <p className="progress-sheet-note">
+              A case showing either condition may come back inconclusive until these classes ship.
+            </p>
+
+            <button className="progress-sheet-close" onClick={() => setShowProgress(false)}>
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

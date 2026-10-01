@@ -29,8 +29,7 @@
   filter: brightness(0.42) saturate(0.85);
 }
 
-.cam-error,
-.upload-placeholder {
+.cam-error {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -40,13 +39,6 @@
   padding: 32px;
   text-align: center;
   color: rgba(255, 255, 255, 0.55);
-}
-
-.upload-placeholder {
-  position: absolute;
-  inset: 0;
-  background: var(--navy);
-  color: var(--on-dark-3);
 }
 
 /* UI Layer */
@@ -145,14 +137,17 @@
 
 .ui-title {
   margin: 0;
-  font-size: 20px;
+  font-family: var(--font-head);
+  font-size: var(--text-lg);
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: #fff;
 }
 
 .ui-subtitle {
-  margin: 8px 0 0;
-  font-size: 14px;
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
   color: var(--on-dark-2);
 }
 
@@ -310,14 +305,26 @@
   cursor: pointer;
 }
 
-.ui-action-btn.secondary {
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+.ui-action-btn.primary {
+  background: #fff;
+  color: var(--navy);
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.ui-action-btn.primary {
-  background: var(--accent-blue);
+.ui-action-btn.primary:active {
+  transform: scale(0.98);
+  background: #E9ECF2;
+}
+
+.ui-action-btn.ghost {
+  background: transparent;
   color: #fff;
+  border: 1.5px solid var(--on-dark-line);
+  padding: calc(16px - 1.5px);
+}
+
+.ui-action-btn.ghost:active {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .ui-action-btn:disabled {
@@ -484,119 +491,234 @@
 /* Camera error overlay — layered on top of the always-mounted capture
    screen (never replaces it), so the <video> element underneath never
    unmounts just because getUserMedia failed. */
-.camera-error-overlay {
+/* ─── Camera error sheet ─────────────────────────────────────── */
+/* Same bottom-sheet language as the "In development" disclosure on the
+   result screen: scrim + rounded surface + grip. Layered above .ui-layer
+   so the shutter underneath can't be tapped while an error is showing.
+   The <video> element is untouched and stays mounted behind it. */
+.camera-sheet-scrim {
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 4;
   display: flex;
-  flex-direction: column;
-  background: linear-gradient(165deg, var(--navy-2) 0%, var(--navy) 100%);
-  color: #fff;
+  align-items: flex-end;
+  background: rgba(8, 13, 26, 0.58);
+  animation: camera-scrim-in 0.18s ease;
 }
 
-.permission-gate {
-  height: 100%;
+@keyframes camera-scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.camera-sheet {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(165deg, var(--navy-2) 0%, var(--navy) 100%);
-  color: #fff;
-  position: relative;
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-3) var(--space-6) var(--space-6);
+  box-shadow: 0 -14px 44px rgba(8, 13, 26, 0.34);
+  animation: camera-sheet-in 0.26s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.gate-close {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 5;
+@keyframes camera-sheet-in {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
 }
 
-.gate-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: var(--space-8) var(--space-6);
+.camera-sheet-grip {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto var(--space-5);
+  border-radius: var(--radius-full);
+  background: rgba(15, 23, 42, 0.14);
 }
 
-.gate-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+.camera-sheet-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-bottom: var(--space-5);
-}
-
-.gate-title {
-  font-family: var(--font-head);
-  font-size: var(--text-lg);
-  font-weight: 700;
+  gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
 
-.gate-desc {
-  font-size: var(--text-sm);
-  color: var(--on-dark-2);
-  line-height: 1.6;
-  max-width: 300px;
+.camera-sheet-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-amber-bg);
+  color: var(--accent-amber);
 }
 
-.gate-actions {
+.camera-sheet-title {
+  font-family: var(--font-head);
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.camera-sheet-close {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
-  padding: var(--space-5) var(--space-6) 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.camera-sheet-close:hover {
+  background: var(--primary-muted);
+  color: var(--ink);
+}
+
+.camera-sheet-desc {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin-bottom: var(--space-5);
+}
+
+.camera-sheet-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.btn-allow {
+.camera-sheet-primary {
   width: 100%;
   padding: var(--space-4);
-  background: var(--accent-blue);
-  color: #fff;
   border: none;
   border-radius: var(--radius-full);
+  background: var(--navy);
+  color: #fff;
   font-family: var(--font-body);
-  font-weight: 600;
   font-size: var(--text-base);
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.btn-allow:active {
+.camera-sheet-primary:active {
   transform: scale(0.98);
-  background: var(--accent-blue-hover);
+  background: var(--navy-2);
 }
 
-.btn-allow:disabled {
-  opacity: 0.6;
+.camera-sheet-primary:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
-.btn-use-photo {
+.camera-sheet-secondary {
   width: 100%;
-  padding: calc(var(--space-4) - 1px);
+  padding: calc(var(--space-4) - 1.5px);
   background: transparent;
-  color: #fff;
-  border: 1.5px solid var(--on-dark-line);
+  color: var(--ink);
+  border: 1.5px solid var(--line);
   border-radius: var(--radius-full);
   font-family: var(--font-body);
-  font-weight: 600;
   font-size: var(--text-base);
+  font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-.gate-tech {
-  margin-top: var(--space-3);
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 11px;
+.camera-sheet-secondary:active {
+  background: var(--bg);
+}
+
+/* ─── Upload mode ────────────────────────────────────────────── */
+.viewfinder-wrap.upload-bg {
+  background: linear-gradient(165deg, var(--navy-2) 0%, var(--navy) 100%);
+}
+
+.upload-dropzone {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-6);
+  border: 1.5px dashed rgba(255, 255, 255, 0.22);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font-family: var(--font-body);
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.upload-dropzone:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.upload-dropzone:active {
+  transform: scale(0.99);
+}
+
+.upload-dropzone-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--on-dark-2);
+  margin-bottom: var(--space-1);
+}
+
+.upload-dropzone-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.35;
+  color: #fff;
+}
+
+.upload-dropzone-hint {
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
   color: var(--on-dark-3);
-  max-width: 320px;
-  word-break: break-word;
+}
+
+.upload-tips {
+  list-style: none;
+  margin: var(--space-6) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 300px;
+  width: 100%;
+}
+
+.upload-tips li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--on-dark-2);
+}
+
+.upload-tips li svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent-amber);
 }
