@@ -1,22 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../theme/tokens.dart';
 import 'analyzing_screen.dart';
+import '../theme/routes.dart';
 
-const _tips = <String>[
-  'Fill the frame with the affected area',
-  'Use daylight or bright indoor lighting',
-  'Hold steady — avoid motion blur',
-];
-
-/// Gallery upload path. Mirrors the PWA's upload mode: a tappable
-/// dropzone, three quality tips, and a white primary action.
-///
-/// DEMO BUILD: the picked photo is passed straight to the analysing
-/// screen; nothing is classified.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
 
@@ -28,6 +18,10 @@ class _UploadScreenState extends State<UploadScreen> {
   final _picker = ImagePicker();
   String? _path;
   String? _error;
+
+  static const navy = Color(0xFF073858);
+  static const background = Color(0xFFF5FAFC);
+  static const maroon = Color(0xFF800020);
 
   Future<void> _pick() async {
     setState(() => _error = null);
@@ -41,16 +35,15 @@ class _UploadScreenState extends State<UploadScreen> {
       setState(() => _path = shot.path);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = "Couldn't open your gallery. $e");
+      setState(() => _error = "Couldn't access gallery. Please try again.");
     }
   }
 
   void _analyze() {
     if (_path == null) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => AnalyzingScreen(imagePaths: [_path!]),
-      ),
+    AppRoutes.pushReplacement(
+      context,
+      (_) => AnalyzingScreen(imagePaths: [_path!]),
     );
   }
 
@@ -58,93 +51,171 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     final hasPhoto = _path != null;
 
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: T.cardGradient),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // ── Header ──────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(T.s6, T.s4, T.s6, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: background,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+
+                // ── Top Navigation Row ────────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Upload photo',
-                          style: TextStyle(
-                            fontSize: T.tLg,
-                            fontWeight: FontWeight.w700,
-                            color: T.onDark,
-                            letterSpacing: -0.22,
-                          ),
-                        ),
-                        InkWell(
-                          onTap: () => Navigator.of(context).maybePop(),
-                          customBorder: const CircleBorder(),
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: const BoxDecoration(
-                              color: Color(0x29FFFFFF),
-                              shape: BoxShape.circle,
+                    InkWell(
+                      onTap: () => Navigator.of(context).maybePop(),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x0C142E53),
+                              blurRadius: 10,
+                              offset: Offset(0, 3),
                             ),
-                            child: const Icon(Icons.close,
-                                size: 18, color: Colors.white),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 18,
+                          color: navy,
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      'scanine',
+                      style: TextStyle(
+                        fontFamily: 'InstrumentSans',
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.8,
+                        color: navy,
+                      ),
+                    ),
+                    const SizedBox(width: 44), // Balancer
+                  ],
+                ),
+
+                const SizedBox(height: 28),
+
+                // ── Header ────────────────────────────────────────
+                const Text(
+                  'UPLOAD PHOTO',
+                  style: TextStyle(
+                    fontFamily: 'InstrumentSans',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    color: navy,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Select photo',
+                  style: TextStyle(
+                    fontFamily: 'InstrumentSans',
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -1.0,
+                    color: navy,
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // ── Content Card ──────────────────────────────────
+                Expanded(
+                  child: hasPhoto
+                      ? _PreviewCard(
+                          path: _path!,
+                          onChangePhoto: _pick,
+                        )
+                      : _UploadDropzoneCard(
+                          onTap: _pick,
+                        ),
+                ),
+
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF9EBEF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: maroon, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              fontFamily: 'InstrumentSans',
+                              fontSize: 13,
+                              color: maroon,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: T.s2),
-                    Text(
-                      _error ??
-                          'Pick a clear, well-lit photo from your gallery.',
-                      style: TextStyle(
-                        fontSize: T.tSm,
-                        height: 1.5,
-                        color: _error == null
-                            ? T.onDark2
-                            : const Color(0xFFFCA5A5),
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+
+                // ── Bottom Action Button (only shown once a photo is selected) ──
+                if (hasPhoto) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton(
+                      onPressed: _analyze,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: navy,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 20,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Start screening',
+                            style: TextStyle(
+                              fontFamily: 'InstrumentSans',
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-
-              // ── Body ────────────────────────────────────
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: T.s6),
-                  child: hasPhoto
-                      ? _Preview(path: _path!)
-                      : _Dropzone(onTap: _pick),
-                ),
-              ),
-
-              // ── Actions ─────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(T.s6, T.s4, T.s6, T.s8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: hasPhoto
-                          ? _GhostButton(label: 'Change photo', onTap: _pick)
-                          : _PrimaryButton(label: 'Choose photo', onTap: _pick),
-                    ),
-                    if (hasPhoto) ...[
-                      const SizedBox(width: T.s4),
-                      Expanded(
-                        child: _PrimaryButton(
-                            label: 'Analyze photo', onTap: _analyze),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                  const SizedBox(height: 24),
+                ] else
+                  const SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -152,100 +223,56 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 }
 
-class _Dropzone extends StatelessWidget {
-  const _Dropzone({required this.onTap});
+class _UploadDropzoneCard extends StatelessWidget {
+  const _UploadDropzoneCard({required this.onTap});
 
   final VoidCallback onTap;
 
+  static const navy = Color(0xFF073858);
+
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: SingleChildScrollView(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0C142E53),
+              blurRadius: 24,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(T.rLg),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 300),
-                padding: const EdgeInsets.symmetric(
-                    vertical: T.s8, horizontal: T.s6),
-                decoration: BoxDecoration(
-                  color: const Color(0x0AFFFFFF),
-                  borderRadius: BorderRadius.circular(T.rLg),
-                  border: Border.all(color: const Color(0x38FFFFFF), width: 1.5),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: const BoxDecoration(
-                        color: Color(0x14FFFFFF),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.file_upload_outlined,
-                          size: 26, color: T.onDark2),
-                    ),
-                    const SizedBox(height: T.s4),
-                    const Text(
-                      'Choose a photo of the affected area',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: T.tBase,
-                        fontWeight: FontWeight.w600,
-                        color: T.onDark,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: T.s3),
-                    const Text(
-                      'JPG or PNG · tap to browse',
-                      style: TextStyle(
-                        fontSize: T.tXs,
-                        color: T.onDark3,
-                        letterSpacing: 0.44,
-                      ),
-                    ),
-                  ],
-                ),
+            Container(
+              width: 76,
+              height: 76,
+              decoration: const BoxDecoration(
+                color: Color(0xFFD2E3F1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.add_photo_alternate_outlined,
+                color: navy,
+                size: 38,
               ),
             ),
-            const SizedBox(height: T.s6),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 300),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _tips
-                    .map(
-                      (t) => Padding(
-                        padding: const EdgeInsets.only(bottom: T.s2),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 1),
-                              child: Icon(Icons.check,
-                                  size: 13, color: T.amber),
-                            ),
-                            const SizedBox(width: T.s2),
-                            Expanded(
-                              child: Text(
-                                t,
-                                style: const TextStyle(
-                                  fontSize: T.tXs,
-                                  color: T.onDark2,
-                                  height: 1.45,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                    .toList(),
+            const SizedBox(height: 20),
+            const Text(
+              'Tap to select a photo',
+              style: TextStyle(
+                fontFamily: 'InstrumentSans',
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: navy,
+                letterSpacing: -0.4,
               ),
             ),
           ],
@@ -255,72 +282,87 @@ class _Dropzone extends StatelessWidget {
   }
 }
 
-class _Preview extends StatelessWidget {
-  const _Preview({required this.path});
+class _PreviewCard extends StatelessWidget {
+  const _PreviewCard({
+    required this.path,
+    required this.onChangePhoto,
+  });
 
   final String path;
+  final VoidCallback onChangePhoto;
+
+  static const navy = Color(0xFF073858);
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: T.s4),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(T.rLg),
-        child: SizedBox(
-          width: double.infinity,
-          child: Image.file(File(path), fit: BoxFit.cover),
-        ),
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C142E53),
+            blurRadius: 24,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return FilledButton(
-      onPressed: onTap,
-      style: FilledButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: T.navy,
-        padding: const EdgeInsets.symmetric(vertical: T.s4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(T.rFull),
-        ),
-        textStyle:
-            const TextStyle(fontSize: T.tBase, fontWeight: FontWeight.w600),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.file(
+                File(path),
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF10B981),
+                    size: 18,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Photo loaded',
+                    style: TextStyle(
+                      fontFamily: 'InstrumentSans',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: navy,
+                    ),
+                  ),
+                ],
+              ),
+              TextButton.icon(
+                onPressed: onChangePhoto,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text(
+                  'Change',
+                  style: TextStyle(
+                    fontFamily: 'InstrumentSans',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: navy,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      child: Text(label),
-    );
-  }
-}
-
-class _GhostButton extends StatelessWidget {
-  const _GhostButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        side: const BorderSide(color: T.onDarkLine, width: 1.5),
-        padding: const EdgeInsets.symmetric(vertical: T.s4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(T.rFull),
-        ),
-        textStyle:
-            const TextStyle(fontSize: T.tBase, fontWeight: FontWeight.w600),
-      ),
-      child: Text(label),
     );
   }
 }

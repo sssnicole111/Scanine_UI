@@ -1,0 +1,110 @@
+/* LesionScanOverlay.css */
+
+.lesion-scan-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  background-color: #071124;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lesion-scan-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.lesion-scan-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(7, 17, 36, 0.23);
+  pointer-events: none;
+}
+
+.lesion-scan-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.hud-disclaimer-badge {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(7, 17, 36, 0.9);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  border-radius: 999px;
+  color: #00f0ff;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.hud-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #00f0ff;
+  box-shadow: 0 0 8px #00f0ff;
+}
+
+.hud-bottom-bar {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud-status-text {
+  color: #00f0ff;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-shadow: 0 2px 8px rgba(7, 17, 36, 0.9);
+}
+
+.hud-progress-track {
+  width: 180px;
+  height: 3px;
+  background-color: rgba(0, 240, 255, 0.2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.hud-progress-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #00a8ff, #00f0ff);
+  animation: hudProgressSweep 2.8s cubic-bezier(0.3, 0, 0.1, 1) forwards;
+}
+
+@keyframes hudProgressSweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0%);
+  }
+}

@@ -72,32 +72,47 @@ class _Pin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Use the system palette: navySoft for inactive, navyDark for active
+    const inactiveColor = T.navySoft;
+    const activeColor = T.navyDark;
+
+    final size = active ? 28.0 : 22.0;
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        width: _pinR * 2,
-        height: _pinR * 2,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: active ? T.navy : T.amber,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x40000000),
-              blurRadius: 4,
-              offset: Offset(0, 1),
+      child: Center(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: active ? activeColor : inactiveColor,
+            border: Border.all(
+              color: Colors.white,
+              width: active ? 2.2 : 1.6,
             ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          '$number',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: active ? Colors.white : T.navy,
+            boxShadow: [
+              BoxShadow(
+                color: active
+                    ? const Color(0x55142E53) // navyDark @ 33%
+                    : const Color(0x381F4273), // navySoft @ 22%
+                blurRadius: active ? 8 : 4,
+                spreadRadius: active ? 1 : 0,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '$number',
+            style: TextStyle(
+              fontSize: active ? 11.5 : 10,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
           ),
         ),
       ),

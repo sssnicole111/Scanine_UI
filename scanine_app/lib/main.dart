@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'theme/tokens.dart';
 
 void main() {
@@ -20,13 +20,14 @@ class ScanineApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
+        fontFamily: 'InstrumentSans',
         scaffoldBackgroundColor: T.bg,
         colorScheme: ColorScheme.fromSeed(
           seedColor: T.navy,
           primary: T.navy,
         ),
       ),
-      home: const HomeScreen(),
+      home: const SplashScreen(),
     );
   }
 }

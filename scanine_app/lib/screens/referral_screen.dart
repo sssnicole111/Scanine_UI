@@ -119,68 +119,80 @@ class _ReferralScreenState extends State<ReferralScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s6),
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(T.rMd + 4),
-                      child: Stack(
-                        children: [
-                          TaclobanMap(
-                            clinics: _clinics,
-                            selected: _selected,
-                            onPinTap: (i) => _openDetail(_clinics[i], i),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(T.rMd + 4),
+                        border: Border.all(
+                          color: T.line,
+                          width: 1,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x10193863),
+                            blurRadius: 14,
+                            offset: Offset(0, 4),
                           ),
-                          Positioned(
-                            right: 10,
-                            top: 10,
-                            child: GestureDetector(
-                              onTap: () =>
-                                  _openMaps('veterinary clinic Tacloban City'),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xF2FFFFFF),
-                                  borderRadius:
-                                      BorderRadius.circular(T.rFull),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x33000000),
-                                      blurRadius: 6,
-                                      offset: Offset(0, 1),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(T.rMd + 3),
+                        child: Stack(
+                          children: [
+                            TaclobanMap(
+                              clinics: _clinics,
+                              selected: _selected,
+                              onPinTap: (i) => _openDetail(_clinics[i], i),
+                            ),
+                            Positioned(
+                              right: 10,
+                              top: 10,
+                              child: GestureDetector(
+                                onTap: () =>
+                                    _openMaps('veterinary clinic Tacloban City'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 11, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xF7FFFFFF),
+                                    borderRadius:
+                                        BorderRadius.circular(T.rFull),
+                                    border: Border.all(
+                                      color: T.line,
+                                      width: 1,
                                     ),
-                                  ],
-                                ),
-                                child: const Text(
-                                  'Open in Maps',
-                                  style: TextStyle(
-                                    fontSize: T.tXs,
-                                    fontWeight: FontWeight.w600,
-                                    color: T.navy,
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x18193863),
+                                        blurRadius: 8,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(
+                                        Icons.map_outlined,
+                                        size: 13,
+                                        color: T.navy,
+                                      ),
+                                      SizedBox(width: 5),
+                                      Text(
+                                        'Open in Maps',
+                                        style: TextStyle(
+                                          fontSize: T.tXs,
+                                          fontWeight: FontWeight.w600,
+                                          color: T.navy,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: T.s4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '${_clinics.length} CLINICS',
-                          style: const TextStyle(
-                            fontSize: T.tXs,
-                            fontWeight: FontWeight.w700,
-                            color: T.ink3,
-                            letterSpacing: 1.1,
-                          ),
-                        ),
-                        const Text(
-                          'Tap a pin to locate',
-                          style: TextStyle(fontSize: T.tXs, color: T.ink3),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: T.s3),
                     for (var i = 0; i < _clinics.length; i++) ...[
@@ -216,6 +228,7 @@ class _Header extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Top row: back + title ─────────────────────────
           Row(
             children: [
               InkWell(
@@ -247,46 +260,40 @@ class _Header extends StatelessWidget {
                   ),
                   Text(
                     'Tacloban City, Leyte',
-                    style: TextStyle(fontSize: T.tXs, color: T.ink3),
+                    style: TextStyle(fontSize: T.tSm, color: T.ink3),
                   ),
                 ],
               ),
             ],
           ),
           const SizedBox(height: T.s3),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-            decoration: BoxDecoration(
-              color: urgent
-                  ? const Color(0x1AEF4444)
-                  : const Color(0x1AF59E0B),
-              border: Border.all(
-                color: urgent
-                    ? const Color(0x33EF4444)
-                    : const Color(0x33F59E0B),
-              ),
-              borderRadius: BorderRadius.circular(T.rFull),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          // ── Condition result (right-aligned) ──────────────
+          Align(
+            alignment: Alignment.centerRight,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: urgent ? const Color(0xFFEF4444) : T.amber,
+                Text(
+                  result.condition,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: T.tLg,
+                    fontWeight: FontWeight.w700,
+                    color: urgent ? T.maroon : T.navy,
+                    letterSpacing: -0.3,
+                    height: 1.15,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(height: 3),
                 Text(
-                  '${result.condition} · ${urgent ? "urgent referral" : "consultation advised"}',
-                  style: TextStyle(
-                    fontSize: T.tXs,
-                    fontWeight: FontWeight.w600,
-                    color: urgent
-                        ? const Color(0xFFB91C1C)
-                        : const Color(0xFFB45309),
+                  urgent
+                      ? 'Urgent referral recommended'
+                      : 'Consultation advised',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: T.tSm,
+                    color: T.ink,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -313,18 +320,28 @@ class _ClinicCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(T.rMd),
-      child: Container(
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.fromLTRB(15, 13, 12, 13),
         decoration: BoxDecoration(
-          color: T.surface,
+          color: selected ? const Color(0xFFF5F7FA) : T.surface,
           borderRadius: BorderRadius.circular(T.rMd),
           border: Border.all(
-            color: selected ? T.amber : Colors.transparent,
-            width: 1.5,
+            color: selected ? T.navy : T.line,
+            width: selected ? 1.5 : 1.0,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: selected
+                  ? const Color(0x10193863)
+                  : const Color(0x06000000),
+              blurRadius: selected ? 8 : 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -333,9 +350,18 @@ class _ClinicCard extends StatelessWidget {
               width: 22,
               height: 22,
               margin: const EdgeInsets.only(top: 1),
-              decoration: const BoxDecoration(
-                color: T.amber,
+              decoration: BoxDecoration(
+                color: selected ? T.navyDark : T.navySoft,
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: selected
+                        ? const Color(0x30142E53)
+                        : const Color(0x221F4273),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
               alignment: Alignment.center,
               child: Text(
@@ -391,9 +417,9 @@ class _ToVerify extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: const Color(0x21F59E0B),
+        color: const Color(0x10193863),
         borderRadius: BorderRadius.circular(4),
       ),
       child: const Text(
@@ -401,7 +427,7 @@ class _ToVerify extends StatelessWidget {
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w600,
-          color: Color(0xFFB45309),
+          color: T.navy,
         ),
       ),
     );
@@ -547,7 +573,7 @@ class _Row extends StatelessWidget {
                 fontSize: T.tXs,
                 fontWeight: FontWeight.w600,
                 color: T.ink3,
-                letterSpacing: 0.5,
+                letterSpacing: -0.2,
               ),
             ),
           ),

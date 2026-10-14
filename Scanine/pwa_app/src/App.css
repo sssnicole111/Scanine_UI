@@ -1,27 +1,28 @@
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
-/* ─── Design Tokens ─────────────────────────────────────────── */
 :root {
-  /* Palette */
-  --ink: #0F172A;
-  --ink-2: #475569;
-  --ink-3: #94A3B8;
+  /* Palette - Unified Scanine Design System */
+  --ink: #193863;
+  --ink-2: #5F708A;
+  --ink-3: #8E9CB2;
   --surface: #FFFFFF;
-  --bg: #F8F6F4;
-  --line: rgba(0, 0, 0, 0.12);
+  --bg: #F8FAFD;
+  --bg-gradient-end: #EEF2F7;
+  --line: rgba(25, 56, 99, 0.08);
 
-  --primary: #0F172A;
-  --primary-hover: #1E293B;
-  --primary-muted: rgba(15, 23, 42, 0.08);
+  --primary: #193863;
+  --primary-hover: #142E53;
+  --primary-muted: rgba(25, 56, 99, 0.08);
 
   --danger: #EF4444;
   --danger-bg: #FEF2F2;
   --success: #10B981;
-  --success-bg: #ECFDF5;
+  --success-bg: #E8F8F2;
+  --success-ink: #0D8A68;
 
   /* Typography */
-  --font-body: 'Instrument Sans', system-ui, sans-serif;
-  --font-head: 'Instrument Sans', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-head: 'Outfit', system-ui, -apple-system, sans-serif;
 
   --text-xs: 11px;
   --text-sm: 13px;
@@ -47,20 +48,23 @@
   --radius-full: 999px;
 
   /* Shadow */
-  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 12px 32px rgba(122, 107, 95, 0.08);
+  --shadow-sm: 0 4px 12px rgba(25, 56, 99, 0.04);
+  --shadow-md: 0 12px 32px rgba(25, 56, 99, 0.08);
 
-  /* Scanine screening-flow accents */
-  --navy: #101B34;
-  --navy-2: #16244a;
+  /* Scanine accents */
+  --navy: #193863;
+  --navy-dark: #142E53;
+  --navy-soft: #1F4273;
+  --mist: #C5D0DE;
+  --bar-gray: #CDD5E2;
   --accent-amber: #F59E0B;
   --accent-amber-bg: rgba(245, 158, 11, 0.12);
   --accent-blue: #2F5DFF;
   --accent-blue-hover: #2748D6;
   --info: #3B82F6;
   --on-dark: #FFFFFF;
-  --on-dark-2: rgba(255, 255, 255, 0.68);
-  --on-dark-3: rgba(255, 255, 255, 0.4);
+  --on-dark-2: rgba(255, 255, 255, 0.72);
+  --on-dark-3: rgba(255, 255, 255, 0.45);
   --on-dark-line: rgba(255, 255, 255, 0.14);
 }
 

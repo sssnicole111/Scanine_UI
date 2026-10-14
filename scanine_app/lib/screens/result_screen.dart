@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/screening_result.dart';
+import '../theme/routes.dart';
 import 'referral_screen.dart';
 import '../theme/tokens.dart';
 
@@ -56,18 +57,16 @@ class ResultScreen extends StatelessWidget {
                       // "Continue monitoring" — no referral warranted.
                       Navigator.of(context).popUntil((r) => r.isFirst);
                     } else {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ReferralScreen(result: result),
-                        ),
+                      AppRoutes.push(
+                        context,
+                        (_) => ReferralScreen(result: result),
                       );
                     }
                   },
                   style: FilledButton.styleFrom(
-                    // Red only when the result actually warrants urgency;
-                    // "Continue monitoring" should not look like an alarm.
+                    // Maroon when urgent; "Continue monitoring" uses navy
                     backgroundColor: switch (result.urgency) {
-                      Urgency.high => const Color(0xFFEF4444),
+                      Urgency.high => T.danger,
                       Urgency.medium => T.amber,
                       Urgency.low => T.navy,
                     },
@@ -275,7 +274,8 @@ class _HeroCard extends StatefulWidget {
 }
 
 class _HeroCardState extends State<_HeroCard> {
-  bool _showHeatmap = false;
+  // Land on the heat map by default, not the raw photo
+  bool _showHeatmap = true;
 
   @override
   Widget build(BuildContext context) {
@@ -388,22 +388,9 @@ class _HeroCardState extends State<_HeroCard> {
           ],
         ),
       ),
-        ),
-        if (showingHeatmap)
-          Padding(
-            padding: const EdgeInsets.only(top: T.s3),
-            child: Text(
-              'Grad-CAM overlay — a coarse indicator of model attention, '
-              'not a lesion boundary.',
-              style: TextStyle(
-                fontSize: T.tXs,
-                color: T.ink3,
-                height: 1.45,
-              ),
-            ),
-          ),
-      ],
-    );
+    ),
+  ],
+);
   }
 }
 
@@ -449,26 +436,11 @@ class _VoteLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: const BoxDecoration(
-            color: T.amber,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: T.s2),
-        Expanded(
-          child: Text(
-            '${result.agreeVotes}/${result.totalFrames} '
-            '${result.tta ? "augmented views" : "frames"} agreed '
-            'on ${result.condition}',
-            style: const TextStyle(fontSize: T.tSm, color: T.ink2),
-          ),
-        ),
-      ],
+    return Text(
+      '${result.agreeVotes}/${result.totalFrames} '
+      '${result.tta ? "augmented views" : "frames"} agreed '
+      'on ${result.condition}',
+      style: const TextStyle(fontSize: T.tSm, color: T.ink2),
     );
   }
 }
@@ -496,7 +468,7 @@ class _GuidanceCard extends StatelessWidget {
               fontSize: T.tXs,
               fontWeight: FontWeight.w700,
               color: T.ink3,
-              letterSpacing: 1.1,
+              letterSpacing: -0.2,
             ),
           ),
           const SizedBox(height: T.s4),
@@ -506,18 +478,22 @@ class _GuidanceCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: Icon(Icons.check, size: 15, color: T.success),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: const Icon(
+                      Icons.check,
+                      size: 16,
+                      color: T.navy,
+                    ),
                   ),
-                  const SizedBox(width: T.s3),
+                  const SizedBox(width: T.s2 + 2),
                   Expanded(
                     child: Text(
                       line,
                       style: const TextStyle(
-                        fontSize: T.tSm,
+                        fontSize: T.tBase,
                         color: T.ink,
-                        height: 1.5,
+                        height: 1.55,
                       ),
                     ),
                   ),

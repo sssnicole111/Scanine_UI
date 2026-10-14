@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import SplashScreen from './screens/SplashScreen'
+import ScanineSplash from './screens/ScanineSplash'
+import HomeScreen from './screens/HomeScreen'
 import CameraScreen from './screens/CameraScreen'
 import ResultScreen from './screens/ResultScreen'
 import './App.css'
@@ -16,19 +17,22 @@ export default function App() {
   return (
     <div className="app-root">
       {screen === 'splash' && (
-        <SplashScreen onStart={() => goTo('camera')} />
+        <ScanineSplash onFinished={() => goTo('home')} />
+      )}
+      {screen === 'home' && (
+        <HomeScreen onStart={() => goTo('camera')} />
       )}
       {screen === 'camera' && (
         <CameraScreen
           onResult={(data) => goTo('result', data)}
-          onBack={() => goTo('splash')}
+          onBack={() => goTo('home')}
         />
       )}
       {screen === 'result' && (
         <ResultScreen
           result={result}
           onScanAgain={() => goTo('camera')}
-          onHome={() => goTo('splash')}
+          onHome={() => goTo('home')}
         />
       )}
     </div>

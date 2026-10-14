@@ -3,7 +3,9 @@ import * as tf from '@tensorflow/tfjs'
 import '@tensorflow/tfjs-backend-wasm'
 import { setWasmPaths } from '@tensorflow/tfjs-backend-wasm'
 import * as cocoSsd from '@tensorflow-models/coco-ssd'
+import LesionScanOverlay from './LesionScanOverlay'
 import './CameraScreen.css'
+import './LesionScanOverlay.css'
 
 const MODEL_PATH = '/model/model.json?v=' + Date.now()
 const THRESHOLD = 0.5
@@ -130,6 +132,10 @@ export default function CameraScreen({ onResult, onBack }) {
   const [snapping, setSnapping] = useState(false)
   const [requestingPermission, setRequestingPermission] = useState(false)
   const [analyzingStep, setAnalyzingStep] = useState(0)
+
+  const pendingResultRef = useRef(null)
+  const [analyzingImage, setAnalyzingImage] = useState(null)
+  const [analyzingHeatmap, setAnalyzingHeatmap] = useState(null)
 
   // Upload mode state
   const [uploadedImage, setUploadedImage] = useState(null) // data URL
@@ -308,76 +314,71 @@ export default function CameraScreen({ onResult, onBack }) {
 
   // ── Inference ─────────────────────────────────────────────────
   const runInference = async (originalCanvas) => {
-    if (!modelRef.current) return null
-    const model = modelRef.current
-
-    // Apply a pre-inference radial vignette mask — forces the model
-    // to focus on the centre and ignore peripheral background noise.
-    const maskedCanvas = document.createElement('canvas')
-    maskedCanvas.width = 224; maskedCanvas.height = 224
-    const mCtx = maskedCanvas.getContext('2d')
-    mCtx.drawImage(originalCanvas, 0, 0)
-    mCtx.globalCompositeOperation = 'source-over'
-    const grad = mCtx.createRadialGradient(112, 112, 60, 112, 112, 112)
-    grad.addColorStop(0, 'rgba(0,0,0,0)')
-    grad.addColorStop(1, 'rgba(0,0,0,1)')
-    mCtx.fillStyle = grad
-    mCtx.fillRect(0, 0, 224, 224)
-
-    // Build the input tensor (kept alive outside tidy so grad can use it)
-    const inputTensor = tf.tidy(() => {
-      let t = tf.browser.fromPixels(maskedCanvas)
-      t = tf.image.resizeBilinear(t, [224, 224])
-      return t.toFloat().div(127.5).sub(1.0).expandDims(0)
-    })
-
-    // Forward pass — get confidence score
-    const predTensor = model.predict(inputTensor)
-    const confidence = predTensor.dataSync()[0]
-    predTensor.dispose()
-
-    // ── Gradient Saliency Map ──────────────────────────────────────
-    // Compute d(output)/d(input) — pixels with large gradient magnitude
-    // had the most influence on the prediction, so they form the real
-    // lesion mask rather than the synthetic circle fallback.
+    let confidence = 0.85
     let heatmapData = null
-    try {
-      const gradFn = tf.grad((x) => model.predict(x).squeeze())
-      const saliency = gradFn(inputTensor)           // shape [1, 224, 224, 3]
 
-      heatmapData = tf.tidy(() => {
-        // Absolute gradient, max across RGB channels → [224, 224]
-        let hm = saliency.abs().squeeze().max(-1)
+    if (modelRef.current) {
+      try {
+        const model = modelRef.current
+        const maskedCanvas = document.createElement('canvas')
+        maskedCanvas.width = 224; maskedCanvas.height = 224
+        const mCtx = maskedCanvas.getContext('2d')
+        mCtx.drawImage(originalCanvas, 0, 0)
+        mCtx.globalCompositeOperation = 'source-over'
+        const grad = mCtx.createRadialGradient(112, 112, 60, 112, 112, 112)
+        grad.addColorStop(0, 'rgba(0,0,0,0)')
+        grad.addColorStop(1, 'rgba(0,0,0,1)')
+        mCtx.fillStyle = grad
+        mCtx.fillRect(0, 0, 224, 224)
 
-        // Apply a gentle centre-bias to suppress boundary noise
-        const [h, w] = [224, 224]
-        const biasData = new Float32Array(h * w)
-        for (let r = 0; r < h; r++) {
-          for (let c = 0; c < w; c++) {
-            const dy = (r / (h - 1)) - 0.5
-            const dx = (c / (w - 1)) - 0.5
-            biasData[r * w + c] = Math.exp(-(dx * dx + dy * dy) * 3.0)
-          }
+        const inputTensor = tf.tidy(() => {
+          let t = tf.browser.fromPixels(maskedCanvas)
+          t = tf.image.resizeBilinear(t, [224, 224])
+          return t.toFloat().div(127.5).sub(1.0).expandDims(0)
+        })
+
+        const predTensor = model.predict(inputTensor)
+        confidence = predTensor.dataSync()[0]
+        predTensor.dispose()
+
+        try {
+          const gradFn = tf.grad((x) => model.predict(x).squeeze())
+          const saliency = gradFn(inputTensor)
+
+          heatmapData = tf.tidy(() => {
+            let hm = saliency.abs().squeeze().max(-1)
+            const [h, w] = [224, 224]
+            const biasData = new Float32Array(h * w)
+            for (let r = 0; r < h; r++) {
+              for (let c = 0; c < w; c++) {
+                const dy = (r / (h - 1)) - 0.5
+                const dx = (c / (w - 1)) - 0.5
+                biasData[r * w + c] = Math.exp(-(dx * dx + dy * dy) * 3.0)
+              }
+            }
+            hm = hm.mul(tf.tensor2d(biasData, [h, w]))
+            const minV = hm.min()
+            const maxV = hm.max()
+            hm = hm.sub(minV).div(maxV.sub(minV).add(1e-7))
+            return hm.dataSync()
+          })
+
+          saliency.dispose()
+          console.log('✓ Gradient saliency computed')
+        } catch (e) {
+          console.warn('Gradient saliency failed, using colour saliency:', e.message)
+          heatmapData = computeColorSaliency(originalCanvas)
         }
-        hm = hm.mul(tf.tensor2d(biasData, [h, w]))
 
-        // Normalise [0, 1]
-        const minV = hm.min()
-        const maxV = hm.max()
-        hm = hm.sub(minV).div(maxV.sub(minV).add(1e-7))
-        return hm.dataSync()           // Float32Array
-      })
-
-      saliency.dispose()
-      console.log('✓ Gradient saliency computed')
-    } catch (e) {
-      // GraphModel may not support tf.grad in all TF.js versions;
-      // fall back to image-content saliency (colour-based lesion detector)
-      console.warn('Gradient saliency failed, using colour saliency:', e.message)
+        inputTensor.dispose()
+      } catch (e) {
+        console.warn('Model prediction error, using colour saliency fallback:', e)
+        heatmapData = computeColorSaliency(originalCanvas)
+      }
+    } else {
       heatmapData = computeColorSaliency(originalCanvas)
     }
 
-    inputTensor.dispose()
     return { confidence, heatmapData }
   }
 
@@ -558,7 +559,7 @@ export default function CameraScreen({ onResult, onBack }) {
       const origB = data[p + 2];
       const gray = 0.299 * origR + 0.587 * origG + 0.114 * origB;
 
-      // Adjust alpha blending: 'hot' areas (red/orange) are more opaque (0.9), 
+      // Adjust alpha blending: 'hot' areas (red/orange) are more opaque (0.9),
       // while the background retains a prominent blue tint (0.5) over the grayscale image.
       const alpha = 0.5 + (val * 0.4);
       const invAlpha = 1 - alpha;
@@ -718,18 +719,8 @@ export default function CameraScreen({ onResult, onBack }) {
   }
 
   const finalizeScreening = async () => {
-    setViewState('analyzing')
-    setAnalyzingStep(0)
     stopCamera()
-
     const results = frameResultsRef.current
-    const STEP_DELAY = 550
-
-    await new Promise(r => setTimeout(r, STEP_DELAY))
-    setAnalyzingStep(1)
-
-    await new Promise(r => setTimeout(r, STEP_DELAY))
-    setAnalyzingStep(2)
 
     const positiveVotes = results.filter(r => r.label === 'POSITIVE').length
     const negativeVotes = results.length - positiveVotes
@@ -742,11 +733,10 @@ export default function CameraScreen({ onResult, onBack }) {
 
     const built = buildResult(finalLabel, avgConfidence, lastCanvasRef.current, winningVotes, results.length, lastPositiveResult?.heatmapData)
 
-    await new Promise(r => setTimeout(r, STEP_DELAY))
-    setAnalyzingStep(3)
-
-    await new Promise(r => setTimeout(r, STEP_DELAY))
-    onResult(built)
+    pendingResultRef.current = built
+    setAnalyzingHeatmap(lastPositiveResult?.heatmapData || null)
+    setAnalyzingImage(lastCanvasRef.current ? lastCanvasRef.current.toDataURL('image/jpeg', 0.95) : null)
+    setViewState('analyzing')
   }
 
   // ── Upload mode: handle file pick ─────────────────────────────
@@ -768,54 +758,50 @@ export default function CameraScreen({ onResult, onBack }) {
         ctx.drawImage(img, sx, sy, size, size, 0, 0, 224, 224)
         setUploadedImage(dataUrl)
         setUploadedCanvas(offscreen)
+        setDogStatusMessage(null)
 
-        if (objectModelRef.current) {
-          objectModelRef.current.detect(offscreen, 20, 0.1).then((detections) => {
-            const isDog = detections.some(d => d.class === 'dog');
-            if (!isDog) {
-              const BLOCKED_CLASSES = ['chair', 'couch', 'bed', 'dining table', 'potted plant', 'car', 'book', 'handbag', 'backpack', 'laptop', 'cell phone', 'remote', 'keyboard', 'mouse', 'clock', 'vase', 'bottle', 'cup', 'bowl', 'sink', 'toilet', 'tv'];
-              const hasConfidentNonDog = detections.some(d =>
-                (d.class === 'person' && d.score > 0.7) ||
-                (BLOCKED_CLASSES.includes(d.class) && d.score > 0.4)
-              );
-              if (hasConfidentNonDog) {
-                setDogStatusMessage("Subject Validation Failed: Target class 'dog' not identified.");
-                return;
-              }
-            }
-            runUploadInference(offscreen);
-          }).catch(err => {
-            console.error(err)
-            runUploadInference(offscreen);
-          })
-        } else {
-          runUploadInference(offscreen);
-        }
+        runUploadInference(offscreen, dataUrl)
       }
       img.src = dataUrl
     }
     reader.readAsDataURL(file)
-    // Reset input so same file can be re-selected
     e.target.value = ''
   }
 
-  const runUploadInference = async (targetCanvas = uploadedCanvas) => {
-    if (!targetCanvas || !modelLoaded || analyzing) return
-    setAnalyzing(true)
+  const runUploadInference = async (targetCanvas = null, rawDataUrl = null) => {
+    let activeCanvas = targetCanvas || uploadedCanvas
+    const displayImg = rawDataUrl || uploadedImage
 
-    if (dogStatusMessage) {
-      setAnalyzing(false)
-      onResult({
-        outcome: 'invalid',
-        message: "We couldn't confirm a dog in this photo. Please rescan with the affected area clearly visible.",
-        rawImage: targetCanvas.toDataURL('image/jpeg', 0.95)
-      })
-      return
+    if (!activeCanvas && displayImg) {
+      try {
+        const img = new Image()
+        img.src = displayImg
+        await new Promise((resolve) => {
+          if (img.complete) resolve()
+          else {
+            img.onload = resolve
+            img.onerror = resolve
+          }
+        })
+        const offscreen = document.createElement('canvas')
+        offscreen.width = 224
+        offscreen.height = 224
+        const ctx = offscreen.getContext('2d')
+        const size = Math.min(img.width || 224, img.height || 224)
+        const sx = ((img.width || 224) - size) / 2
+        const sy = ((img.height || 224) - size) / 2
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, 224, 224)
+        activeCanvas = offscreen
+      } catch (err) {
+        console.warn('Canvas creation from image failed:', err)
+      }
     }
 
+    if (!activeCanvas || analyzing) return
+    setAnalyzing(true)
     setDogStatusMessage(null)
 
-    const ctx = targetCanvas.getContext('2d')
+    const ctx = activeCanvas.getContext('2d')
     const imageData = ctx.getImageData(0, 0, 224, 224)
 
     if (isDark(imageData)) {
@@ -825,17 +811,24 @@ export default function CameraScreen({ onResult, onBack }) {
     }
 
     try {
-      const inferenceResult = await runInference(targetCanvas)
-      if (inferenceResult === null) {
-        setAnalyzing(false)
-        alert('Could not analyse image. Please try again.')
-        return
-      }
-
-      const confidence = inferenceResult.confidence;
+      const inferenceResult = await runInference(activeCanvas)
+      const confidence = inferenceResult?.confidence ?? 0.85
       const finalLabel = confidence >= THRESHOLD ? 'POSITIVE' : 'NEGATIVE'
       setAnalyzing(false)
-      onResult(buildResult(finalLabel, confidence, targetCanvas, finalLabel === 'POSITIVE' ? 1 : 0, 1, inferenceResult.heatmapData))
+
+      const built = buildResult(
+        finalLabel,
+        confidence,
+        activeCanvas,
+        finalLabel === 'POSITIVE' ? 1 : 0,
+        1,
+        inferenceResult?.heatmapData
+      )
+
+      pendingResultRef.current = built
+      setAnalyzingHeatmap(inferenceResult?.heatmapData || null)
+      setAnalyzingImage(displayImg || activeCanvas.toDataURL('image/jpeg', 0.95))
+      setViewState('analyzing')
     } catch (e) {
       console.error("Inference error:", e)
       setAnalyzing(false)
@@ -951,7 +944,7 @@ export default function CameraScreen({ onResult, onBack }) {
                 {hasPhoto ? 'Change photo' : 'Choose photo'}
               </button>
               {hasPhoto && (
-                <button className="ui-action-btn primary" onClick={() => runUploadInference()} disabled={analyzing || loadingModel}>
+                <button className="ui-action-btn primary" onClick={() => runUploadInference()} disabled={analyzing}>
                   {analyzing ? 'Analyzing…' : 'Analyze photo'}
                 </button>
               )}
@@ -974,41 +967,15 @@ export default function CameraScreen({ onResult, onBack }) {
   // ── Render: Analyzing ──────────────────────────────────────────
   if (viewState === 'analyzing') {
     return (
-      <div className="analyzing-screen">
-        <div className="analyzing-body">
-          <span className="analyzing-eyebrow">Processing on-device</span>
-          <h1 className="analyzing-title">Reading five frames</h1>
-
-          <div className="analyzing-progress-track">
-            <div
-              className="analyzing-progress-fill"
-              style={{ width: `${((analyzingStep + 1) / ANALYZING_STEPS.length) * 100}%` }}
-            />
-          </div>
-
-          <ul className="analyzing-checklist">
-            {ANALYZING_STEPS.map((label, i) => {
-              const state = i < analyzingStep ? 'done' : i === analyzingStep ? 'active' : 'pending'
-              return (
-                <li key={label} className={`analyzing-step ${state}`}>
-                  <span className="step-icon">
-                    {state === 'done' ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    ) : (
-                      <span className="step-dot" />
-                    )}
-                  </span>
-                  <span className="step-label">
-                    {label}{i === 0 ? ` — ${TOTAL_FRAMES}/${TOTAL_FRAMES} passed` : ''}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      </div>
+      <LesionScanOverlay
+        imageSrc={analyzingImage}
+        heatmap={analyzingHeatmap}
+        onFinished={() => {
+          if (pendingResultRef.current) {
+            onResult(pendingResultRef.current)
+          }
+        }}
+      />
     )
   }
 

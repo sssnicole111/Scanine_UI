@@ -1,0 +1,199 @@
+:root {
+  --font-head: "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --navy: #193863;
+  --navy-dark: #142e53;
+  --navy-cta: #1d3f6f;
+  --mist-dot: #c5d0de;
+  --ink-sub: #5f708a;
+  --ok: #0d8a68;
+  --ok-dot: #10b981;
+  --bar-gray: #cdd5e2;
+}
+
+/* ─── Home Screen ─────────────────────────────────────────── */
+.home {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 28px 36px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.95) 0%, rgba(246, 248, 252, 0.7) 60%),
+    linear-gradient(180deg, #F8FAFD 0%, #EEF2F7 100%);
+  user-select: none;
+}
+
+.home h1,
+.home p {
+  margin: 0;
+}
+
+.home button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Entrance */
+.rise {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: rise .7s cubic-bezier(.2, .8, .2, 1) forwards;
+  animation-delay: calc(var(--d, 0) * 1s);
+}
+
+@keyframes rise {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Top row */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.mark {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 27px;
+  letter-spacing: -0.035em;
+  color: var(--navy);
+  line-height: 1;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ok);
+  letter-spacing: -0.01em;
+}
+
+.dot-ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.22);
+  display: grid;
+  place-items: center;
+}
+
+.dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  background: var(--ok-dot);
+}
+
+.spacer {
+  flex: 1;
+  min-height: 40px;
+}
+
+/* Headline */
+.headline {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 52px;
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  color: var(--navy);
+}
+
+.headline em {
+  font-style: normal;
+  color: var(--mist-dot);
+  font-weight: 700;
+  margin-left: 1px;
+}
+
+/* Subtitle */
+.sub {
+  margin-top: 16px;
+  max-width: 270px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ink-sub);
+  letter-spacing: -0.01em;
+}
+
+/* Frame bars (5 indicators) */
+.frames {
+  display: flex;
+  gap: 6px;
+  margin: 32px 0 20px;
+}
+
+.frames i {
+  flex: 1;
+  height: 3.5px;
+  border-radius: 2px;
+  background: var(--bar-gray);
+  opacity: 0.85;
+}
+
+/* CTA button */
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 70px;
+  padding: 0 11px 0 30px;
+  border-radius: 35px;
+  background: linear-gradient(175deg, #1f4273 0%, var(--navy-dark) 100%);
+  color: #fff;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  box-shadow: 0 16px 36px rgba(20, 46, 83, 0.32);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.cta:active {
+  transform: scale(0.98);
+  box-shadow: 0 10px 24px rgba(20, 46, 83, 0.28);
+}
+
+.cta:focus-visible {
+  outline: 3px solid #285494;
+  outline-offset: 4px;
+}
+
+/* Camera button inside CTA */
+.cam {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--navy);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.cam svg {
+  color: var(--navy);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation-duration: .01s;
+    animation-delay: 0s;
+  }
+}
