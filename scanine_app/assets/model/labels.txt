@@ -1,2 +1,4 @@
-Normal
 Ringworm
+Hotspot
+FAD
+Healthy

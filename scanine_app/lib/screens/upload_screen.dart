@@ -61,7 +61,7 @@ class _UploadScreenState extends State<UploadScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
 
                 // ── Top Navigation Row ────────────────────────────
                 Row(
@@ -105,7 +105,7 @@ class _UploadScreenState extends State<UploadScreen> {
                   ],
                 ),
 
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
 
                 // ── Header ────────────────────────────────────────
                 const Text(

@@ -87,10 +87,10 @@ const double _taglineEnd = 3.95;
 
 // ----- sizes, in design units (the design is 390 wide; the widget scales to fit the screen) -----
 const double _designWidth = 390;
-const double _typeHeightScale = 0.91; // slightly shorter typography height ("canine" / "scanine")
+const double _typeHeightScale = 0.82; // shorter typography height to remove vertical stretch ("canine" / "scanine")
 const double _slit = 7; // width of the scan line
 const double _wake = 84; // length of the wake behind it
-const double _taglineDrop = 57; // tagline baseline, measured down from the middle of the letters
+const double _taglineDrop = 55; // tagline baseline, measured down from the middle of the letters
 const double _taglineRise = 6; // how far the tagline rises as it fades in
 
 /// The scanine splash. It plays once, then calls [onFinished].
@@ -101,7 +101,15 @@ class ScanineSplash extends StatefulWidget {
     this.taglineStyle,
     this.hold = const Duration(milliseconds: 500),
     this.fadeOut = const Duration(milliseconds: 350),
+    this.patternAsset = 'assets/images/splash_pattern.png',
+    this.patternOpacity = 0.70,
   });
+
+  /// Optional subtle background texture pattern asset path.
+  final String? patternAsset;
+
+  /// Opacity of the background texture pattern (0.0 to 1.0).
+  final double patternOpacity;
 
   /// Called once, when the splash has finished fading out. Open the next screen here.
   final VoidCallback onFinished;
@@ -244,17 +252,39 @@ class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProvider
         textDirection: TextDirection.ltr,
         image: true,
         child: RepaintBoundary(
-          child: SizedBox.expand(
-            child: CustomPaint(
-              painter: _SplashPainter(
-                clock: _clock,
-                wordmark: _wordmark,
-                tagline: _tagline,
-                motion: _motion,
-                hold: _hold,
-                fadeOut: _fadeOut,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Base cloud background
+              const DecoratedBox(
+                decoration: BoxDecoration(color: _cloud),
               ),
-            ),
+              // 2. Subtle watercolor pattern texture
+              if (widget.patternAsset != null)
+                Opacity(
+                  opacity: widget.patternOpacity,
+                  child: Image.asset(
+                    widget.patternAsset!,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              // 3. Foreground animated wordmark, sweep & tagline
+              SizedBox.expand(
+                child: CustomPaint(
+                  painter: _SplashPainter(
+                    clock: _clock,
+                    wordmark: _wordmark,
+                    tagline: _tagline,
+                    motion: _motion,
+                    hold: _hold,
+                    fadeOut: _fadeOut,
+                    hasPattern: widget.patternAsset != null,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -270,12 +300,14 @@ class _SplashPainter extends CustomPainter {
     required this.motion,
     required this.hold,
     required this.fadeOut,
+    this.hasPattern = false,
   }) : super(repaint: clock);
 
   final Animation<double> clock;
   final _Wordmark wordmark;
   final TextPainter tagline;
   final double motion, hold, fadeOut; // in seconds
+  final bool hasPattern;
 
   // Everything that fades out together lives inside this box (design units, centred on the screen).
   static const Rect _sceneBounds = Rect.fromLTRB(-195, -70, 195, 110);
@@ -317,7 +349,9 @@ class _SplashPainter extends CustomPainter {
   // A soft oval glow: centred just above the middle, reaching 72% of the width and of the height.
   void _paintBackground(Canvas canvas, Size size) {
     final double w = size.width, h = size.height;
-    canvas.drawRect(Offset.zero & size, Paint()..color = _cloud);
+    if (!hasPattern) {
+      canvas.drawRect(Offset.zero & size, Paint()..color = _cloud);
+    }
     canvas.save();
     canvas.translate(0.5 * w, 0.49 * h);
     canvas.scale(0.72 * w, 0.72 * h);
@@ -327,7 +361,13 @@ class _SplashPainter extends CustomPainter {
         ..shader = ui.Gradient.radial(
           Offset.zero,
           1,
-          const <Color>[_cloudHi, _cloud, _cloudLo],
+          hasPattern
+              ? const <Color>[
+                  Color(0x25F9FAFD),
+                  Color(0x00EEF1F6),
+                  Color(0x20E6EAF2),
+                ]
+              : const <Color>[_cloudHi, _cloud, _cloudLo],
           const <double>[0, 0.5, 1],
         ),
     );
@@ -425,7 +465,8 @@ class _SplashPainter extends CustomPainter {
         oldDelegate.tagline != tagline ||
         oldDelegate.motion != motion ||
         oldDelegate.hold != hold ||
-        oldDelegate.fadeOut != fadeOut;
+        oldDelegate.fadeOut != fadeOut ||
+        oldDelegate.hasPattern != hasPattern;
   }
 }
 
@@ -529,7 +570,7 @@ class _Wordmark {
 
     // i: the stem, then the dot pops
     _letters.add(<_Stroke>[_stem(x + 4, startOf(4))]);
-    _dotCentre = Offset(x + 4, -_xHeight - 9);
+    _dotCentre = Offset(x + 4, -_xHeight - 8.5 / _typeHeightScale);
     _dotStart = startOf(4) + 0.28;
     x += 8 + 6;
 

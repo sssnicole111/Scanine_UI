@@ -9,6 +9,7 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ScanineSplash(
+      patternAsset: null,
       onFinished: () {
         AppRoutes.pushReplacement(context, (_) => const HomeScreen());
       },

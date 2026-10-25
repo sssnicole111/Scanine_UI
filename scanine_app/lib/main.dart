@@ -7,6 +7,20 @@ import 'theme/tokens.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // Enable edge-to-edge so UI extends smoothly behind status bar and notches
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
   runApp(const ScanineApp());
 }
 
@@ -22,6 +36,13 @@ class ScanineApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'InstrumentSans',
         scaffoldBackgroundColor: T.bg,
+        appBarTheme: const AppBarTheme(
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+          ),
+        ),
         colorScheme: ColorScheme.fromSeed(
           seedColor: T.navy,
           primary: T.navy,

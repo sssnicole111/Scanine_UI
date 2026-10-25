@@ -33,6 +33,16 @@ class T {
   static const mist = Color(0xFFC5D0DE);
   static const barGray = Color(0xFFCDD5E2);
   static const amber = Color(0xFFF59E0B);
+
+  // ── Analyzing screen ─────────────────────────────────────────────
+  /// Dark brown (#2a1d12) used as the dim layer on the Analyzing screen only.
+  /// Keeps the photo's colours natural where a blue dim would turn them muddy.
+  static const stageDim = Color(0xFF2A1D12);
+
+  /// Capture-screen amber (#dca052) — the warm amber from the camera
+  /// viewfinder reticles. Used as the heat tint on the Analyzing screen.
+  /// Note: T.amber (0xFFF59E0B) is used elsewhere (ResultScreen, alerts).
+  static const captureAmber = Color(0xFFDCA052);
   static const amberBg = Color(0x1FF59E0B);
   static const amberGlow = Color(0x38F59E0B);
 

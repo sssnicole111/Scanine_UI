@@ -2,15 +2,26 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../models/scan_trace.dart';
 import '../models/screening_result.dart';
 import '../theme/routes.dart';
 import 'referral_screen.dart';
 import '../theme/tokens.dart';
 
 class ResultScreen extends StatelessWidget {
-  const ResultScreen({super.key, required this.result});
+  const ResultScreen({
+    super.key,
+    required this.result,
+    this.trace,
+  });
 
   final ScreeningResult result;
+
+  /// Pre-computed Grad-CAM trace passed from AnalyzingScreen.
+  /// When present, [result.heatmap] already matches [trace.heatmapPng].
+  /// This field exists only so the type is available for future use by
+  /// child widgets; the heatmap PNG is always accessed via [result.heatmap].
+  final ScanTrace? trace;
 
   String get _timestamp {
     final now = DateTime.now();
@@ -33,7 +44,7 @@ class ResultScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _HeroCard(result: result),
+                    _HeroCard(result: result, trace: trace),
                     const SizedBox(height: T.s4),
                     _VoteLine(result: result),
                     const SizedBox(height: T.s4),
@@ -105,7 +116,7 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(T.s5, T.s4, T.s5, T.s3),
+      padding: const EdgeInsets.fromLTRB(T.s5, T.s2, T.s5, T.s3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -122,19 +133,13 @@ class _TopBar extends StatelessWidget {
               child: const Icon(Icons.chevron_left, size: 20, color: T.ink),
             ),
           ),
-          Row(
-            children: [
-              Text(
-                timestamp,
-                style: const TextStyle(
-                  fontSize: T.tSm,
-                  color: T.ink3,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: T.s2),
-              _PendingBadge(),
-            ],
+          Text(
+            timestamp,
+            style: const TextStyle(
+              fontSize: T.tSm,
+              color: T.ink3,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -142,132 +147,12 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// The quiet "two conditions still in development" marker.
-class _PendingBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => showModalBottomSheet<void>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (_) => const _PendingSheet(),
-      ),
-      customBorder: const CircleBorder(),
-      child: const SizedBox(
-        width: 22,
-        height: 22,
-        child: Icon(Icons.error_outline, size: 15, color: T.ink3),
-      ),
-    );
-  }
-}
-
-class _PendingSheet extends StatelessWidget {
-  const _PendingSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: T.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(T.rLg)),
-      ),
-      padding: const EdgeInsets.fromLTRB(T.s5, T.s3, T.s5, T.s6),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0x24101B34),
-                  borderRadius: BorderRadius.circular(T.rFull),
-                ),
-              ),
-            ),
-            const SizedBox(height: T.s5),
-            const Text(
-              'In development',
-              style: TextStyle(
-                fontSize: T.tBase,
-                fontWeight: FontWeight.w700,
-                color: T.ink,
-              ),
-            ),
-            const SizedBox(height: T.s2),
-            const Text(
-              'Scanine currently reports ringworm and dermatologically '
-              'normal skin. Two conditions from the full model are still '
-              'being trained:',
-              style: TextStyle(fontSize: T.tSm, color: T.ink2, height: 1.5),
-            ),
-            const SizedBox(height: T.s4),
-            ...kPendingClasses.map(
-              (c) => Padding(
-                padding: const EdgeInsets.only(bottom: T.s3),
-                child: Container(
-                  padding: const EdgeInsets.only(left: T.s3),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      left: BorderSide(color: T.amber, width: 2),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        c.name,
-                        style: const TextStyle(
-                          fontSize: T.tSm,
-                          fontWeight: FontWeight.w600,
-                          color: T.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        c.description,
-                        style: const TextStyle(
-                          fontSize: T.tXs,
-                          color: T.ink3,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: T.s2),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: TextButton.styleFrom(
-                  backgroundColor: T.bg,
-                  foregroundColor: T.ink,
-                  padding: const EdgeInsets.symmetric(vertical: T.s3),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(T.rFull),
-                  ),
-                ),
-                child: const Text('Got it'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _HeroCard extends StatefulWidget {
-  const _HeroCard({required this.result});
+  const _HeroCard({required this.result, this.trace});
 
   final ScreeningResult result;
+  final ScanTrace? trace;
 
   @override
   State<_HeroCard> createState() => _HeroCardState();
@@ -280,7 +165,7 @@ class _HeroCardState extends State<_HeroCard> {
   @override
   Widget build(BuildContext context) {
     final result = widget.result;
-    final showingHeatmap = _showHeatmap && result.hasHeatmap;
+    final showingHeatmap = _showHeatmap && result.hasHeatmap && !result.inconclusive;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,7 +178,25 @@ class _HeroCardState extends State<_HeroCard> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (showingHeatmap)
+            if (result.inconclusive)
+              // Amber-slate gradient for inconclusive — no heatmap shown
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF2C3E5A), Color(0xFF1A2A3A)],
+                  ),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.help_outline_rounded,
+                    size: 72,
+                    color: Color(0x3DF59E0B),
+                  ),
+                ),
+              )
+            else if (showingHeatmap)
               Image.memory(result.heatmap!, fit: BoxFit.cover)
             else if (result.imagePath != null)
               Image.file(File(result.imagePath!), fit: BoxFit.cover)
@@ -349,14 +252,31 @@ class _HeroCardState extends State<_HeroCard> {
                   color: const Color(0xB3000000),
                   borderRadius: BorderRadius.circular(T.rFull),
                 ),
-                child: Text(
-                  '${result.confidencePercent}%',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: T.tSm,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                child: result.inconclusive
+                    ? const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              size: 13, color: T.amber),
+                          SizedBox(width: 4),
+                          Text(
+                            'Low confidence',
+                            style: TextStyle(
+                              color: T.amber,
+                              fontSize: T.tSm,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        '${result.confidencePercent}%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: T.tSm,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
             ),
             Positioned(
@@ -376,7 +296,9 @@ class _HeroCardState extends State<_HeroCard> {
                     ),
                   ),
                   Text(
-                    result.conditionLabel,
+                    result.inconclusive
+                        ? 'Retake scan for a clearer result'
+                        : result.conditionLabel,
                     style: const TextStyle(
                       fontSize: T.tBase,
                       color: Color(0xCCFFFFFF),
@@ -436,6 +358,16 @@ class _VoteLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (result.inconclusive) {
+      return Text(
+        result.totalFrames == 0
+            ? 'No frame data available — please retake the scan.'
+            : '${result.agreeVotes}/${result.totalFrames} '
+              '${result.tta ? "augmented views" : "frames"} agreed '
+              '— confidence below threshold.',
+        style: const TextStyle(fontSize: T.tSm, color: T.amber),
+      );
+    }
     return Text(
       '${result.agreeVotes}/${result.totalFrames} '
       '${result.tta ? "augmented views" : "frames"} agreed '

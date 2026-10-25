@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/routes.dart';
 import 'camera_screen.dart';
 
@@ -211,121 +212,127 @@ class ScanineHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final height = constraints.maxHeight;
-            final compact = height < 650;
-
-            return Stack(
-              children: [
-                // Decorative silhouette behind the interface.
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: ExcludeSemantics(
-                      child: CustomPaint(
-                        painter: _DogSilhouettePainter(),
-                      ),
-                    ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: background,
+        body: Stack(
+          children: [
+            // Decorative silhouette extends edge-to-edge behind the notch and status bar.
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ExcludeSemantics(
+                  child: CustomPaint(
+                    painter: _DogSilhouettePainter(),
                   ),
                 ),
+              ),
+            ),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 16),
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final height = constraints.maxHeight;
+                  final compact = height < 680;
+                  final topSpace = compact ? 8.0 : 12.0;
+                  final heroSpace = (height * 0.08).clamp(16.0, 48.0);
+                  final bottomSpace = compact ? 16.0 : 24.0;
 
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'scanine',
-                            style: TextStyle(
-                              fontFamily: 'InstrumentSans',
-                              fontSize: 29,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -1.3,
-                              color: navy,
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: onHowItWorks,
-                            style: TextButton.styleFrom(
-                              foregroundColor: slate,
-                              minimumSize: const Size(48, 48),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        SizedBox(height: topSpace),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'scanine',
+                              style: TextStyle(
+                                fontFamily: 'InstrumentSans',
+                                fontSize: 29,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -1.3,
+                                color: navy,
                               ),
                             ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.help_outline_rounded,
-                                  size: 19,
+                            TextButton(
+                              onPressed: onHowItWorks,
+                              style: TextButton.styleFrom(
+                                foregroundColor: slate,
+                                minimumSize: const Size(48, 48),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
                                 ),
-                                SizedBox(width: 6),
-                                Text(
-                                  'How it works',
-                                  style: TextStyle(
-                                    fontFamily: 'InstrumentSans',
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.help_outline_rounded,
+                                    size: 19,
                                   ),
-                                ),
-                              ],
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'How it works',
+                                    style: TextStyle(
+                                      fontFamily: 'InstrumentSans',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                          ],
+                        ),
+
+                        SizedBox(height: heroSpace),
+
+                        Text(
+                          'Screen in\nfive frames.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'InstrumentSans',
+                            fontSize: compact ? 38 : 44,
+                            fontWeight: FontWeight.w700,
+                            height: 1.04,
+                            letterSpacing: -1.7,
+                            color: navy,
                           ),
-                        ],
-                      ),
-
-                      SizedBox(height: height * 0.09),
-
-                      Text(
-                        'Screen in\nfive frames.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'InstrumentSans',
-                          fontSize: compact ? 38 : 44,
-                          fontWeight: FontWeight.w700,
-                          height: 1.04,
-                          letterSpacing: -1.7,
-                          color: navy,
                         ),
-                      ),
 
-                      const SizedBox(height: 22),
+                        SizedBox(height: compact ? 16 : 22),
 
-                      const Text(
-                        'Point the camera at the\n'
-                        'affected area to begin.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'InstrumentSans',
-                          fontSize: 17,
-                          fontWeight: FontWeight.w400,
-                          height: 1.4,
-                          letterSpacing: -0.3,
-                          color: slate,
+                        const Text(
+                          'Point the camera at the\n'
+                          'affected area to begin.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'InstrumentSans',
+                            fontSize: 17,
+                            fontWeight: FontWeight.w400,
+                            height: 1.4,
+                            letterSpacing: -0.3,
+                            color: slate,
+                          ),
                         ),
-                      ),
 
-                      const Spacer(),
+                        const Spacer(),
 
-                      _ScreeningButton(
-                        onPressed: onStartScreening,
-                      ),
+                        _ScreeningButton(
+                          onPressed: onStartScreening,
+                        ),
 
-                      const SizedBox(height: 28),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+                        SizedBox(height: bottomSpace),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

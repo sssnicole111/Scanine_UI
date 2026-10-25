@@ -1,10 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class _FadeLiftRoute<T> extends PageRouteBuilder<T> {
   _FadeLiftRoute({required WidgetBuilder builder, super.settings})
       : super(
-          transitionDuration: const Duration(milliseconds: 380),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: const Duration(milliseconds: 320),
+          reverseTransitionDuration: const Duration(milliseconds: 260),
           pageBuilder: (context, animation, secondaryAnimation) =>
               builder(context),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -16,7 +16,7 @@ class _FadeLiftRoute<T> extends PageRouteBuilder<T> {
               opacity: curved,
               child: SlideTransition(
                 position: Tween<Offset>(
-                  begin: const Offset(0, 0.04),
+                  begin: const Offset(0, 0.03),
                   end: Offset.zero,
                 ).animate(curved),
                 child: child,
@@ -29,15 +29,15 @@ class _FadeLiftRoute<T> extends PageRouteBuilder<T> {
 class _FadeRoute<T> extends PageRouteBuilder<T> {
   _FadeRoute({required WidgetBuilder builder, super.settings})
       : super(
-          transitionDuration: const Duration(milliseconds: 400),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: const Duration(milliseconds: 320),
+          reverseTransitionDuration: const Duration(milliseconds: 260),
           pageBuilder: (context, animation, secondaryAnimation) =>
               builder(context),
           transitionsBuilder: (context, animation, secondaryAnimation, child) =>
               FadeTransition(
             opacity: CurvedAnimation(
               parent: animation,
-              curve: Curves.easeInOut,
+              curve: Curves.easeOutCubic,
             ),
             child: child,
           ),

@@ -16,9 +16,8 @@ const int kTotalFrames = 5;
 
 /// Live capture screen matching the unified Scanine camera design.
 /// Features a light cloud backdrop, rounded viewfinder card with warm amber
-/// framing reticles, organic central lesion targeting glow, functional
-/// Focus (Laplacian variance) & Light (mean pixel intensity) quality assessments,
-/// and concentric navy shutter button.
+/// framing reticles, functional Focus (Laplacian variance) & Light (mean pixel
+/// intensity) quality assessments, and concentric navy shutter button.
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -58,7 +57,22 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _start();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      final anim = route?.animation;
+      if (anim != null && !anim.isCompleted) {
+        void listener(AnimationStatus status) {
+          if (status == AnimationStatus.completed) {
+            anim.removeStatusListener(listener);
+            if (mounted) _start();
+          }
+        }
+        anim.addStatusListener(listener);
+      } else {
+        _start();
+      }
+    });
   }
 
   @override
@@ -174,8 +188,13 @@ class _CameraScreenState extends State<CameraScreen> {
     _isStreaming = false;
   }
 
-  void _goToUpload() {
-    AppRoutes.push(context, (_) => const UploadScreen());
+  Future<void> _goToUpload() async {
+    await _stopLiveQualityStream();
+    if (!mounted) return;
+    await AppRoutes.push(context, (_) => const UploadScreen());
+    if (mounted && !_capturing) {
+      _startLiveQualityStream();
+    }
   }
 
   void _fail(String title, String body) {
@@ -263,6 +282,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
       // ── All frames collected — proceed to analysis ──────────────
+      await _stopLiveQualityStream();
       if (!mounted) return;
       AppRoutes.pushReplacement(
         context,
@@ -294,7 +314,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 22),
                 child: Column(
                   children: [
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
 
                     // ── Header: 5 Progress Segments + Frame Label ──
                     Row(
@@ -372,9 +392,6 @@ class _CameraScreenState extends State<CameraScreen> {
                                     child: CameraPreview(_controller!),
                                   ),
                                 ),
-
-                              // Center organic lesion focus glow
-                              const Center(child: _CenterFocusGlow()),
 
                               // Amber viewfinder framing corner reticles
                               Positioned.fill(
@@ -489,6 +506,26 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 }
 
+/// Public alias for [_FrameProgressBar] so external screens (e.g. Analyzing)
+/// can show the same header widget without duplicating code.
+///
+/// Pass [currentIndex] = [totalFrames] to fill all segments navy (the
+/// "FRAME 5 / 5 — all done" state shown on the Analyzing screen).
+class CaptureProgressBar extends StatelessWidget {
+  const CaptureProgressBar({
+    super.key,
+    required this.currentIndex,
+    required this.totalFrames,
+  });
+
+  final int currentIndex;
+  final int totalFrames;
+
+  @override
+  Widget build(BuildContext context) =>
+      _FrameProgressBar(currentIndex: currentIndex, totalFrames: totalFrames);
+}
+
 /// 5-segment pill progress indicator stuck tightly together.
 /// Captured = Warm Amber, Current = Deep Navy, Pending = Pale Gray-Blue.
 class _FrameProgressBar extends StatelessWidget {
@@ -600,73 +637,6 @@ class _ReadoutItem extends StatelessWidget {
   }
 }
 
-/// Organic warm amber blurred focus glow located in the center of the camera.
-/// Breathes gently to guide user alignment.
-class _CenterFocusGlow extends StatefulWidget {
-  const _CenterFocusGlow();
-
-  @override
-  State<_CenterFocusGlow> createState() => _CenterFocusGlowState();
-}
-
-class _CenterFocusGlowState extends State<_CenterFocusGlow>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseController;
-  late final Animation<double> _scaleAnimation;
-  late final Animation<double> _opacityAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat(reverse: true);
-
-    _scaleAnimation = Tween<double>(begin: 0.94, end: 1.04).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    _opacityAnimation = Tween<double>(begin: 0.72, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _scaleAnimation.value,
-          child: Opacity(opacity: _opacityAnimation.value, child: child),
-        );
-      },
-      child: Container(
-        width: 172,
-        height: 104,
-        decoration: BoxDecoration(
-          borderRadius: const BorderRadius.all(Radius.elliptical(86, 52)),
-          gradient: RadialGradient(
-            center: const Alignment(0.0, -0.06),
-            radius: 0.85,
-            colors: [
-              const Color(0xFFDCA052).withValues(alpha: 0.44),
-              const Color(0xFFC88A36).withValues(alpha: 0.22),
-              const Color(0xFF14243B).withValues(alpha: 0.0),
-            ],
-            stops: const [0.0, 0.52, 1.0],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// Custom painter for the 4 amber rounded corner reticles in the viewfinder.
 class _CornerBracketsPainter extends CustomPainter {

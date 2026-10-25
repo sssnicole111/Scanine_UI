@@ -18,12 +18,15 @@ Future<Uint8List?> renderHeatmap({
   double threshold = 0.18,
   double maxAlpha = 0.62,
 }) async {
-  final decoded = img.decodeImage(await File(photoPath).readAsBytes());
+  final file = File(photoPath);
+  if (!await file.exists()) return null;
+  final decoded = img.decodeImage(await file.readAsBytes());
   if (decoded == null) return null;
 
-  final base = decoded.width > maxWidth
-      ? img.copyResize(decoded, width: maxWidth)
-      : decoded;
+  final oriented = img.bakeOrientation(decoded);
+  final base = oriented.width > maxWidth
+      ? img.copyResize(oriented, width: maxWidth)
+      : oriented;
 
   final w = base.width;
   final h = base.height;

@@ -50,7 +50,7 @@ class CamRegion {
 /// cam        – normalised Grad-CAM values (already 0..1), row-major.
 ///              This is [FrameResult.cam] — already normalised by the
 ///              classifier's _gradCam().
-/// camH, camW – grid dimensions (typically 7×7 from MobileNetV2's last conv).
+/// camH, camW – grid dimensions (typically 7×7 from MobileNetV3-Small's last conv).
 /// threshold  – cells with activation >= threshold are treated as active.
 ///              0.40 is a reasonable starting point for the already-normalised
 ///              cam; the heatmap.dart renderer uses 0.18 on the same data

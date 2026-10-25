@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import '../ml/classifier.dart';
 
 // First-response guidance, ported from FIRST_RESPONSE_GUIDANCE in the PWA's
-// CameraScreen.jsx. Keyed by the model's label so the two classes still in
-// training slot straight in when they ship.
+// CameraScreen.jsx. Keyed by the model's label so every class slots straight
+// in now that the 4-class model has shipped.
 
 enum Urgency { high, medium, low }
 
@@ -29,7 +29,29 @@ const _guidance = <String, _Guidance>{
       'Schedule a veterinary visit to confirm and begin antifungal treatment.',
     ],
   ),
-  'Normal': _Guidance(
+  'Hotspot': _Guidance(
+    'Hotspot (acute moist dermatitis)',
+    Urgency.high,
+    'Refer to veterinarian',
+    [
+      'Carefully trim or clip fur around the lesion to allow airflow.',
+      'Gently clean the affected area with a mild antiseptic solution.',
+      'Prevent the dog from licking or scratching — use an e-collar if needed.',
+      'Schedule a veterinary visit for topical or oral treatment.',
+    ],
+  ),
+  'FAD': _Guidance(
+    'Flea allergy dermatitis',
+    Urgency.medium,
+    'Refer to veterinarian',
+    [
+      'Check the dog thoroughly for fleas, especially around the tail base.',
+      'Apply a vet-recommended flea preventative immediately.',
+      'Treat the home environment (bedding, carpets) for flea eggs and larvae.',
+      'Schedule a veterinary visit if itching persists or worsens.',
+    ],
+  ),
+  'Healthy': _Guidance(
     'Dermatologically normal',
     Urgency.low,
     'Continue monitoring',
@@ -40,6 +62,20 @@ const _guidance = <String, _Guidance>{
     ],
   ),
 };
+
+/// Guidance shown when the result is inconclusive / low-confidence.
+const _inconclusiveGuidance = _Guidance(
+  'Inconclusive',
+  Urgency.medium,
+  'Refer to veterinarian',
+  [
+    'The scan could not confidently identify a condition.',
+    'This may happen with non-canine subjects, poor lighting, or motion blur.',
+    'Ensure the camera is focused on the dog\'s skin, not fur or surroundings.',
+    'Retake the scan with the affected area clearly visible and well-lit.',
+    'If symptoms are present, consult a veterinarian directly.',
+  ],
+);
 
 class ScreeningResult {
   final String condition;
@@ -76,15 +112,42 @@ class ScreeningResult {
   int get confidencePercent => (confidence * 100).round();
   bool get hasHeatmap => heatmap != null;
 
-  /// Majority vote across the captured frames, with a confidence-abstention
-  /// gate — the same decision rule the PWA uses.
+  /// Majority vote across the captured frames, with confidence and entropy
+  /// gates derived from the model's threshold_table.csv and metrics.json.
+  ///
+  /// Abstention rules (any one triggers inconclusive):
+  ///   1. Mean confidence of agreeing frames < [abstainBelow] (0.70)
+  ///   2. Mean normalised entropy of agreeing frames > [maxEntropy] (0.45)
+  ///      — catches cases where the top two probs are nearly tied
+  ///   3. For a 5-frame live burst: fewer than 3 frames agree on the winner
+  ///
+  /// The 0.70 threshold yields ~94% selective accuracy on the test set
+  /// (up from 93% at 0.65) while still covering 85% of images.
   factory ScreeningResult.fromFrames({
     required List<FrameResult> frames,
     required String imagePath,
     Uint8List? heatmap,
-    double abstainBelow = 0.60,
+    double abstainBelow = 0.70,
+    double maxEntropy = 0.45,
     bool tta = false,
   }) {
+    if (frames.isEmpty) {
+      return ScreeningResult(
+        condition: 'Inconclusive',
+        conditionLabel: _inconclusiveGuidance.conditionLabel,
+        confidence: 0.0,
+        agreeVotes: 0,
+        totalFrames: 0,
+        urgency: _inconclusiveGuidance.urgency,
+        referralText: _inconclusiveGuidance.referralText,
+        guidance: _inconclusiveGuidance.lines,
+        imagePath: imagePath,
+        heatmap: heatmap,
+        inconclusive: true,
+        tta: tta,
+      );
+    }
+
     final counts = <String, int>{};
     for (final f in frames) {
       counts[f.label] = (counts[f.label] ?? 0) + 1;
@@ -96,6 +159,39 @@ class ScreeningResult {
     final meanConfidence =
         agreeing.map((f) => f.confidence).reduce((a, b) => a + b) /
             agreeing.length;
+    final meanEntropy =
+        agreeing.map((f) => f.entropy).reduce((a, b) => a + b) /
+            agreeing.length;
+
+    // Consensus rule: for a 5-frame live burst, at least 3 must agree.
+    final bool lacksConsensus =
+        !tta && frames.length >= 5 && agreeing.length < 3;
+
+    // Confidence rule: mean confidence of agreeing frames must reach threshold.
+    final bool lowConfidence = meanConfidence < abstainBelow;
+
+    // Entropy rule: if the model is nearly uniform across classes, abstain.
+    // Normalised entropy > 0.45 means no class is strongly favoured.
+    final bool highEntropy = meanEntropy > maxEntropy;
+
+    final bool isInconclusive = lowConfidence || lacksConsensus || highEntropy;
+
+    if (isInconclusive) {
+      return ScreeningResult(
+        condition: 'Inconclusive',
+        conditionLabel: _inconclusiveGuidance.conditionLabel,
+        confidence: meanConfidence,
+        agreeVotes: agreeing.length,
+        totalFrames: frames.length,
+        urgency: _inconclusiveGuidance.urgency,
+        referralText: _inconclusiveGuidance.referralText,
+        guidance: _inconclusiveGuidance.lines,
+        imagePath: imagePath,
+        heatmap: heatmap,
+        inconclusive: true,
+        tta: tta,
+      );
+    }
 
     final g = _guidance[winner] ??
         const _Guidance('Unrecognised', Urgency.medium,
@@ -112,26 +208,8 @@ class ScreeningResult {
       guidance: g.lines,
       imagePath: imagePath,
       heatmap: heatmap,
-      inconclusive: meanConfidence < abstainBelow,
+      inconclusive: false,
       tta: tta,
     );
   }
 }
-
-/// The two classes the current binary model cannot yet report.
-class PendingClass {
-  final String name;
-  final String description;
-  const PendingClass(this.name, this.description);
-}
-
-const kPendingClasses = <PendingClass>[
-  PendingClass(
-    'Flea Allergy Dermatitis',
-    'FAD — itch and hair loss from flea bite hypersensitivity',
-  ),
-  PendingClass(
-    'Hotspot',
-    'Acute moist dermatitis',
-  ),
-];
