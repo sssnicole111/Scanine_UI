@@ -1,0 +1,107 @@
+{
+  "_note": "Clinic directory for the referral screen. Edit this file to correct or add entries — no Dart changes needed. 'x' and 'y' are normalised positions (0..1) on assets/map/tacloban.png, read off the marker positions on that map; a clinic with no x/y still appears in the list, just without a pin. Navigation never uses them — the Directions button searches the map app by name and address, so an imprecise pin can never route anyone to the wrong building.",
+  "city": "Tacloban City",
+  "province": "Leyte",
+  "clinics": [
+    {
+      "name": "VetCare Pet Clinic",
+      "address": "Burgos St., Tacloban City, 6500 Leyte",
+      "phone": "0926 635 0477",
+      "hours": "Mon–Sun: 9:00 AM – 6:00 PM",
+      "services": "Companion animal care",
+      "x": 0.494,
+      "y": 0.173,
+      "verified": true
+    },
+    {
+      "name": "Eastern Veterinarian Dog and Cat Clinic",
+      "address": "231-C Sta. Cruz St., Brgy. 44, Quarry, Tacloban City",
+      "phone": "(053) 325-8322",
+      "hours": "Mon–Sat: 9:00 AM – 6:00 PM; Sun: 9:00 AM – 12:00 PM",
+      "services": "Dog and cat practice",
+      "x": null,
+      "y": null,
+      "verified": true
+    },
+    {
+      "name": "Blue-Cross Veterinary Clinic",
+      "address": "SDC Building, Marasbaras, Tacloban City, 6500 Leyte",
+      "phone": "0969 616 0722",
+      "hours": "Mon–Sat: 9:00 AM – 6:00 PM",
+      "services": "Veterinary clinic",
+      "x": 0.601,
+      "y": 0.781,
+      "verified": true
+    },
+    {
+      "name": "SMR Veterinary Clinic and Pet Supplies",
+      "address": "Niones Building, Maharlika Highway cor. Caibaan Rd., Brgy. 95, Tacloban City",
+      "phone": "0933 019 9559",
+      "hours": "Mon–Sat: 8:30 AM – 5:00 PM",
+      "services": "Veterinary clinic and pet supplies",
+      "x": 0.391,
+      "y": 0.601,
+      "verified": true
+    },
+    {
+      "name": "St. Benedict Veterinary Clinic",
+      "address": "Pan-Philippine Highway, Fatima Village, Tacloban City, 6500 Leyte",
+      "phone": "(053) 341-3358",
+      "hours": "Hours not reliably published",
+      "services": "Veterinary clinic",
+      "x": 0.536,
+      "y": 0.653,
+      "verified": true
+    },
+    {
+      "name": "St. Mary's Animal Clinic and Agrivet Supply",
+      "address": "Paraiso, Tacloban City, Leyte",
+      "phone": "0955 655 4693",
+      "hours": "Mon–Sun: 8:00 AM – 6:00 PM",
+      "services": "Veterinary clinic and agrivet supplies",
+      "x": 0.733,
+      "y": 0.739,
+      "verified": true
+    },
+    {
+      "name": "Pet Haven Veterinary Clinic San Jose",
+      "address": "Purok Rimas, Paraiso, Brgy. 83 (San Jose), Tacloban City",
+      "phone": "0936 949 6900",
+      "hours": "Tue–Sun: 9:00 AM – 6:00 PM",
+      "services": "Veterinary clinic",
+      "x": null,
+      "y": null,
+      "verified": true
+    },
+    {
+      "name": "R Eight Veterinary Clinic",
+      "address": "Brgy. 95-A Caibaan, Maharlika Highway, Tacloban City",
+      "phone": "0908 814 6498",
+      "hours": "Mon–Tue & Thu–Sat: 8:00 AM – 6:00 PM; Wed: 8:00 AM – 5:00 PM; Sun: 9:00 AM – 3:00 PM",
+      "services": "Veterinary clinic",
+      "x": 0.345,
+      "y": 0.893,
+      "verified": true
+    },
+    {
+      "name": "R8 Agripet Caibaan",
+      "address": "L. Estrera Bldg., Brgy. 95-A, Maharlika Highway/Caibaan Rd., Tacloban City",
+      "phone": "0908 814 6498",
+      "hours": "Mon–Sat: 8:00 AM – 6:00 PM; Sun: 9:00 AM – 3:00 PM",
+      "services": "Veterinary clinic and agri-pet supplies",
+      "x": 0.345,
+      "y": 0.931,
+      "verified": true
+    },
+    {
+      "name": "Dr. Johdel S. Ty",
+      "address": "Sta. Cruz St., Downtown, Tacloban City, 6500 Leyte",
+      "phone": "0917 148 7281",
+      "hours": "Mon–Sat: 9:00 AM – 6:00 PM; Sun: 9:00 AM – 12:00 PM",
+      "services": "Veterinary practice",
+      "x": 0.450,
+      "y": 0.212,
+      "verified": true
+    }
+  ]
+}
