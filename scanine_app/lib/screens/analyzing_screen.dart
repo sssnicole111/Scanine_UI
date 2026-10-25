@@ -41,9 +41,19 @@ import '../theme/tokens.dart';
 import 'camera_screen.dart' show CaptureProgressBar, kTotalFrames;
 import 'result_screen.dart';
 
-// ── Public constant ────────────────────────────────────────────────────────────
-// Already defined in analyze_timeline.dart; re-exported here for callers.
-// kMinAnalyzeMs = 3000 (ms)
+// ── Public constants ──────────────────────────────────────────────────────────
+/// Deliberate pace for the visual screening process so the user can clearly
+/// follow the sweep, attention focus reveals, and multi-frame processing (5.2s).
+const int kAnalyzePaceMs = 5200;
+
+// Re-exported for backwards compatibility
+const int kMinAnalyzeMs = 3000;
+
+const double _kDimEnd = 0.6 / 5.2;     // 0.1154: dim reaches full 52%
+const double _kScanStart = 0.8 / 5.2;  // 0.1538: scan line starts sweep
+const double _kScanEnd = 3.4 / 5.2;    // 0.6538: scan line reaches bottom (2.6s sweep)
+const double _kHoldEnd = 4.5 / 5.2;    // 0.8654: heat hold phase ends (1.1s hold)
+// 4.5s → 5.2s (0.7s): handoff transition into ResultScreen
 
 // ── Private colours ───────────────────────────────────────────────────────────
 const _cloudBg = Color(0xFFEEF1F6);
@@ -69,7 +79,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   // ── Animation ──────────────────────────────────────────────────────────────
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: kMinAnalyzeMs),
+    duration: const Duration(milliseconds: kAnalyzePaceMs),
   );
 
   // Derived animations, all driven from _ctrl (no extra setState per frame).
@@ -114,25 +124,25 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   void initState() {
     super.initState();
 
-    // Build derived animations (intervals match the spec timeline).
+    // Build derived animations (intervals match the deliberate screening timeline).
     _dimAnim = CurvedAnimation(
       parent: _ctrl,
-      // 0.00→0.45 s  / 3.0 s  = 0.0→0.15
-      curve: const Interval(0.0, 0.15, curve: Curves.easeOut),
+      // 0.00→0.60 s (dim fades in)
+      curve: const Interval(0.0, _kDimEnd, curve: Curves.easeOut),
     );
     _scanAnim = CurvedAnimation(
       parent: _ctrl,
-      // 0.50→1.70 s  / 3.0 s  = 0.1667→0.5667
+      // 0.80→3.40 s (steady 2.6s scan sweep showing attention heatmap emergence)
       curve: const Interval(
-        0.5 / 3.0,
-        1.7 / 3.0,
+        _kScanStart,
+        _kScanEnd,
         curve: _ScanEaseCurve(),
       ),
     );
     _handoffAnim = CurvedAnimation(
       parent: _ctrl,
-      // 2.40→3.00 s  / 3.0 s  = 0.80→1.00
-      curve: const Interval(2.4 / 3.0, 1.0, curve: Curves.easeInOut),
+      // 4.50→5.20 s (handoff fade into ResultScreen)
+      curve: const Interval(_kHoldEnd, 1.0, curve: Curves.easeInOut),
     );
 
     _ctrl.addListener(_sampleFrameTime);
@@ -242,31 +252,31 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
 
     if (_reducedMotion) {
       // Skip sweep — just cross-fade the final composition.
-      _ctrl.duration = const Duration(milliseconds: kReducedMotionMs);
+      _ctrl.duration = const Duration(milliseconds: 2000);
       unawaited(
         _ctrl.animateTo(1.0, curve: Curves.easeInOut).whenComplete(_complete),
       );
       return;
     }
 
-    // Normal mode: animate from 0 → some midpoint, park, then continue once
-    // inference is ready. We animate all the way to handoff start (2.4/3.0).
-    // If inference isnishes before that we continue straight to 1.0.
+    // Deliberate normal mode: animate steadily from 0 → hold end (_kHoldEnd).
+    // The scan line sweeps steadily over 2.6 seconds, then holds for 1.1s so
+    // the user can clearly see the lesion attention focus areas.
     unawaited(
       _ctrl
           .animateTo(
-            2.4 / 3.0,
+            _kHoldEnd,
             duration: Duration(
-              milliseconds: (kMinAnalyzeMs * 2.4 / 3.0).round(),
+              milliseconds: (kAnalyzePaceMs * _kHoldEnd).round(),
             ),
             curve: Curves.linear,
           )
           .whenComplete(_onHoldReached),
     );
 
-    // Schedule thumbnail light-ups.
+    // Schedule 5 thumbnail light-ups across the 2.6s sweep (0.8s - 3.4s).
     for (var i = 0; i < widget.imagePaths.length; i++) {
-      final delay = Duration(milliseconds: 550 + (i * 250));
+      final delay = Duration(milliseconds: 900 + (i * 500));
       Future<void>.delayed(delay, () {
         if (!mounted) return;
         setState(() => _thumbOpacity[i] = 1.0);
@@ -279,14 +289,15 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     if (_inferenceReady) {
       _runToEnd();
     } else {
-      // Inference is still running; wait (hold the hold-phase).
-      // We poll via the inference completion callback (_maybeResume).
+      // Inference is still running; wait in the hold-phase.
+      // We resume once inference completes via _maybeResume.
     }
   }
 
   void _maybeResume() {
     if (!mounted || _failed || _finished || _reducedMotion) return;
-    if (!_ctrl.isAnimating || _inferenceReady) {
+    // Only continue into handoff if the animation has finished the hold phase
+    if (!_ctrl.isAnimating && _ctrl.value >= _kHoldEnd) {
       _runToEnd();
     }
   }
@@ -298,7 +309,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       _complete();
       return;
     }
-    final ms = (remaining * kMinAnalyzeMs).round();
+    final ms = (remaining * kAnalyzePaceMs).round();
     unawaited(
       _ctrl
           .animateTo(1.0, duration: Duration(milliseconds: ms), curve: Curves.linear)
@@ -620,8 +631,8 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
                 builder: (context, _) {
                   final scan = _scanAnim.value;
                   // scan line is null before and after the sweep interval.
-                  final inSweep = _ctrl.value >= 0.5 / 3.0 &&
-                      _ctrl.value <= 1.7 / 3.0;
+                  final inSweep = _ctrl.value >= _kScanStart &&
+                      _ctrl.value <= _kScanEnd;
                   return CustomPaint(
                     painter: AmberScanPainter(
                       scan: inSweep ? scan : null,
@@ -647,17 +658,41 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   // ── Hint text ──────────────────────────────────────────────────────────────
 
   Widget _hint() {
-    return Text(
-      'Analyzing your dog\'s photo.',
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontFamily: 'InstrumentSans',
-        fontSize: 13.5,
-        fontWeight: FontWeight.w400,
-        color: _slate,
-        letterSpacing: -0.15,
-      ),
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final text = _hintTextForProgress(_ctrl.value);
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: Text(
+            text,
+            key: ValueKey(text),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'InstrumentSans',
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+              color: _slate,
+              letterSpacing: -0.15,
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  String _hintTextForProgress(double progress) {
+    if (progress < _kScanStart) {
+      return 'Scanning canine skin…';
+    } else if (progress < (_kScanStart + _kScanEnd) / 2) {
+      return 'Evaluating lesion attention & Grad-CAM heat…';
+    } else if (progress < _kScanEnd) {
+      return 'Aggregating 5-frame ensemble screening…';
+    } else if (progress < _kHoldEnd) {
+      return 'Heat focus identified. Reviewing triage…';
+    } else {
+      return 'Finalizing screening summary…';
+    }
   }
 
   // ── 5-frame thumbnail row ──────────────────────────────────────────────────
