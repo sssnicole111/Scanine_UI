@@ -1,0 +1,205 @@
+{
+  "run": "20261026_0111_mnv3s_baseline_seed42",
+  "architecture": "mnv3s_baseline",
+  "classes": [
+    "Ringworm",
+    "Hotspot",
+    "FAD",
+    "Healthy"
+  ],
+  "class_display": {
+    "Ringworm": "Dermatophytosis (ringworm)",
+    "Hotspot": "Hotspot (acute moist dermatitis)",
+    "FAD": "Flea allergy dermatitis",
+    "Healthy": "Dermatologically normal"
+  },
+  "n_images": {
+    "train": 1066,
+    "val": 228,
+    "test": 228,
+    "excluded": 0
+  },
+  "per_class_split": {
+    "test": {
+      "Ringworm": 54,
+      "Hotspot": 42,
+      "FAD": 43,
+      "Healthy": 89
+    },
+    "train": {
+      "Ringworm": 254,
+      "Hotspot": 197,
+      "FAD": 198,
+      "Healthy": 417
+    },
+    "val": {
+      "Ringworm": 54,
+      "Hotspot": 42,
+      "FAD": 43,
+      "Healthy": 89
+    }
+  },
+  "test": {
+    "accuracy": 0.9166666666666666,
+    "precision_macro": 0.9076458256258478,
+    "recall_macro": 0.8965793035560478,
+    "f1_macro": 0.8981007407843096,
+    "auc_macro_ovr": 0.9894177161870946,
+    "ci95": {
+      "accuracy": [
+        0.8771929824561403,
+        0.9517543859649122
+      ],
+      "macro_precision": [
+        0.8673256785134243,
+        0.9463023372714994
+      ],
+      "macro_recall": [
+        0.850805109086359,
+        0.9410210788592248
+      ],
+      "macro_auc": [
+        0.9769730959946485,
+        0.9971015721174527
+      ]
+    },
+    "per_class": {
+      "Ringworm": {
+        "n": 54,
+        "precision": 0.8868,
+        "recall": 0.8704,
+        "f1": 0.8785,
+        "auc": 0.9744
+      },
+      "Hotspot": {
+        "n": 42,
+        "precision": 0.9706,
+        "recall": 0.7857,
+        "f1": 0.8684,
+        "auc": 0.9972
+      },
+      "FAD": {
+        "n": 43,
+        "precision": 0.7843,
+        "recall": 0.9302,
+        "f1": 0.8511,
+        "auc": 0.9863
+      },
+      "Healthy": {
+        "n": 89,
+        "precision": 0.9889,
+        "recall": 1.0,
+        "f1": 0.9944,
+        "auc": 0.9998
+      }
+    }
+  },
+  "healthy_photo_type_check": {
+    "close-up (HEALTHY_*)": {
+      "count": 41,
+      "recall": 1.0
+    },
+    "whole-dog / breed photo": {
+      "count": 48,
+      "recall": 1.0
+    }
+  },
+  "temperature": 1.36195903777036,
+  "suggested_confidence_threshold": 0.7,
+  "target_selective_accuracy": 0.95,
+  "tflite": {
+    "fp32": {
+      "size_mb": 3.760748,
+      "accuracy": 0.9166666666666666,
+      "macro_auc": 0.9894177161870946,
+      "agreement_with_keras": 1.0,
+      "max_prob_diff": 6.318092346191406e-06,
+      "mean_gradcam_diff": 6.516931989608565e-07,
+      "colab_cpu_ms_per_image": 2.747774124145508
+    },
+    "fp16": {
+      "size_mb": 1.938048,
+      "accuracy": 0.9210526315789473,
+      "macro_auc": 0.9894443232539315,
+      "agreement_with_keras": 0.9956140350877193,
+      "max_prob_diff": 0.01416248083114624,
+      "mean_gradcam_diff": 0.0016446940135210752,
+      "colab_cpu_ms_per_image": 2.3085594177246094
+    },
+    "int8_dynamic": {
+      "size_mb": 1.131112,
+      "accuracy": 0.9078947368421053,
+      "macro_auc": 0.9854211214768143,
+      "agreement_with_keras": 0.956140350877193,
+      "max_prob_diff": 0.500697135925293,
+      "mean_gradcam_diff": 0.04294153302907944,
+      "colab_cpu_ms_per_image": 5.437955856323242
+    }
+  },
+  "tflite_io": {
+    "input": {
+      "shape": [
+        1,
+        224,
+        224,
+        3
+      ],
+      "dtype": "float32",
+      "range": [
+        -1,
+        1
+      ]
+    },
+    "outputs": [
+      {
+        "index": 0,
+        "name": "StatefulPartitionedCall:0",
+        "shape": [
+          1,
+          7,
+          7
+        ],
+        "meaning": "gradcam"
+      },
+      {
+        "index": 1,
+        "name": "StatefulPartitionedCall:1",
+        "shape": [
+          1,
+          4
+        ],
+        "meaning": "probabilities"
+      }
+    ]
+  },
+  "preprocessing": "bilinear resize to 224x224 -> uint8 -> float32 -> (x-127.5)/127.5",
+  "config": {
+    "SEED": 42,
+    "SPLIT_FRACTIONS": {
+      "train": 0.7,
+      "val": 0.15,
+      "test": 0.15
+    },
+    "DUP_HAMMING": 6,
+    "USE_CA": false,
+    "DROPOUT": 0.3,
+    "BATCH_SIZE": 32,
+    "STAGE1_EPOCHS": 20,
+    "STAGE1_LR": 0.001,
+    "STAGE2_EPOCHS": 80,
+    "STAGE2_LR": 0.0003,
+    "EARLY_STOP_PATIENCE": 20,
+    "FINETUNE_BN": true,
+    "CA_WARM_START": false,
+    "APP_TFLITE": "fp16",
+    "REENCODE_ALL": true
+  },
+  "epochs_trained": {
+    "stage1": 20,
+    "stage2": 33
+  },
+  "versions": {
+    "tensorflow": "2.21.0",
+    "keras": "3.13.2"
+  }
+}

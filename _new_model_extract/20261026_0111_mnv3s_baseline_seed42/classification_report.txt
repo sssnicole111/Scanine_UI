@@ -1,0 +1,10 @@
+              precision    recall  f1-score   support
+
+    Ringworm      0.887     0.870     0.879        54
+     Hotspot      0.971     0.786     0.868        42
+         FAD      0.784     0.930     0.851        43
+     Healthy      0.989     1.000     0.994        89
+
+    accuracy                          0.917       228
+   macro avg      0.908     0.897     0.898       228
+weighted avg      0.923     0.917     0.917       228
