@@ -213,7 +213,13 @@ class ScanineHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: background,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
       child: Scaffold(
         backgroundColor: background,
         body: Stack(
@@ -230,6 +236,7 @@ class ScanineHomeScreen extends StatelessWidget {
             ),
 
             SafeArea(
+              bottom: false, // Let bg bleed behind system nav bar
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final height = constraints.maxHeight;
@@ -247,15 +254,10 @@ class ScanineHomeScreen extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'scanine',
-                              style: TextStyle(
-                                fontFamily: 'InstrumentSans',
-                                fontSize: 29,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -1.3,
-                                color: navy,
-                              ),
+                            Image.asset(
+                              'assets/images/scanine_wordmark.png',
+                              height: 28,
+                              fit: BoxFit.contain,
                             ),
                             TextButton(
                               onPressed: onHowItWorks,
@@ -325,7 +327,11 @@ class ScanineHomeScreen extends StatelessWidget {
                           onPressed: onStartScreening,
                         ),
 
-                        SizedBox(height: bottomSpace),
+                        // Sit above the nav bar — add the bottom inset
+                        SizedBox(
+                          height: bottomSpace +
+                              MediaQuery.of(context).padding.bottom,
+                        ),
                       ],
                     ),
                   );

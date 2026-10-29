@@ -87,10 +87,10 @@ const double _taglineEnd = 3.95;
 
 // ----- sizes, in design units (the design is 390 wide; the widget scales to fit the screen) -----
 const double _designWidth = 390;
-const double _typeHeightScale = 0.82; // shorter typography height to remove vertical stretch ("canine" / "scanine")
+const double _typeHeightScale = 0.91; // balanced typography height scale (not too tall, not shrinked)
 const double _slit = 7; // width of the scan line
 const double _wake = 84; // length of the wake behind it
-const double _taglineDrop = 55; // tagline baseline, measured down from the middle of the letters
+const double _taglineDrop = 56; // tagline baseline, measured down from the middle of the letters
 const double _taglineRise = 6; // how far the tagline rises as it fades in
 
 /// The scanine splash. It plays once, then calls [onFinished].
@@ -219,7 +219,7 @@ class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProvider
 
   TextPainter _layOutTagline() {
     const TextStyle base = TextStyle(
-      fontFamily: 'Manrope',
+      fontFamily: 'Urbanist',
       fontWeight: FontWeight.w500,
       fontSize: 17.85,
       letterSpacing: 0.0,
@@ -310,7 +310,7 @@ class _SplashPainter extends CustomPainter {
   final bool hasPattern;
 
   // Everything that fades out together lives inside this box (design units, centred on the screen).
-  static const Rect _sceneBounds = Rect.fromLTRB(-195, -70, 195, 110);
+  static const Rect _sceneBounds = Rect.fromLTRB(-195, -80, 195, 110);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -490,14 +490,14 @@ class _Wordmark {
   static const double _xHeight = 38;
   static const double _bowl = 15; // radius of the round letters, measured to the middle of the stroke
   static const double _middle = -19; // the middle of the letters' height
-  static const double _dotRadius = 5;
+  static const double _iconSize = 19.0;
   static const double _dotPop = 0.22; // how long the dot of the i takes to pop in
 
   /// Where the baseline sits below the middle of the letters.
   static const double baseline = 19;
 
   /// Top and bottom of everything the letters can cover, with a little room to spare.
-  static const double top = -60, bottom = 8;
+  static const double top = -72, bottom = 8;
 
   final List<List<_Stroke>> _letters = <List<_Stroke>>[];
   late final Offset _dotCentre;
@@ -518,7 +518,6 @@ class _Wordmark {
     ..strokeWidth = 8
     ..strokeCap = StrokeCap.butt
     ..strokeJoin = StrokeJoin.miter;
-  final Paint _fill = Paint();
 
   // Angles are in degrees, measured clockwise on screen from "3 o'clock" (so -90 is the top).
   static double _deg(double degrees) => degrees * math.pi / 180;
@@ -570,7 +569,7 @@ class _Wordmark {
 
     // i: the stem, then the dot pops
     _letters.add(<_Stroke>[_stem(x + 4, startOf(4))]);
-    _dotCentre = Offset(x + 4, -_xHeight - 8.5 / _typeHeightScale);
+    _dotCentre = Offset(x + 4, -_xHeight - 16.5);
     _dotStart = startOf(4) + 0.28;
     x += 8 + 6;
 
@@ -637,13 +636,11 @@ class _Wordmark {
     }
     if (m >= _dotStart) {
       final double pop = _softBack(_seg(m, _dotStart, _dotStart + _dotPop));
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: _dotCentre,
-          width: 2 * _dotRadius * pop,
-          height: 2 * _dotRadius * pop / _typeHeightScale,
-        ),
-        _fill..color = _ink,
+      _paintIcon(
+        canvas,
+        pop,
+        navyColor: _ink,
+        grayColor: const Color(0xFFC5CAD6),
       );
     }
   }
@@ -662,14 +659,73 @@ class _Wordmark {
         canvas.restore();
       }
     }
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: _dotCentre,
-        width: 2 * _dotRadius,
-        height: 2 * _dotRadius / _typeHeightScale,
-      ),
-      _fill..color = color,
+    _paintIcon(
+      canvas,
+      1.0,
+      navyColor: color,
+      grayColor: color,
+      uniformColor: true,
     );
+  }
+
+  /// Paints the official Scanine brand mark icon replacing the dot above the "i".
+  /// Consists of five separate outer C-shaped segments, a fixed navy center dot,
+  /// and a right-facing opening.
+  void _paintIcon(
+    Canvas canvas,
+    double pop, {
+    required Color navyColor,
+    required Color grayColor,
+    bool uniformColor = false,
+  }) {
+    if (pop <= 0.001) return;
+
+    final double size = _iconSize * pop;
+    final double arcRadius = size * (72.0 / 192.0);
+    final double strokeWidth = size * (24.0 / 192.0);
+    final double dotRadius = size * (19.5 / 192.0);
+
+    // Segment definitions (in degrees, clockwise from 3 o'clock):
+    // 1. Lower right: 35.0° -> 87.0° (sweep 52.0°)
+    // 2. Lower left:  95.0° -> 147.0° (sweep 52.0°)
+    // 3. Left:        155.0° -> 207.0° (sweep 52.0°)
+    // 4. Upper left:  215.0° -> 267.0° (sweep 52.0°)
+    // 5. Upper right: 275.0° -> 327.0° (sweep 52.0°)
+    const segmentAngles = [
+      (35.0, 52.0),
+      (95.0, 52.0),
+      (155.0, 52.0),
+      (215.0, 52.0),
+      (275.0, 52.0),
+    ];
+
+    final rect = Rect.fromCircle(center: Offset.zero, radius: arcRadius);
+
+    canvas.save();
+    canvas.translate(_dotCentre.dx, _dotCentre.dy);
+    // Counteract _typeHeightScale so the icon is rendered as a true circle
+    canvas.scale(1.0, 1.0 / _typeHeightScale);
+
+    final strokePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.butt;
+
+    for (int i = 0; i < 5; i++) {
+      final isNavy = uniformColor || (i < 3);
+      strokePaint.color = isNavy ? navyColor : grayColor;
+      final (startDeg, sweepDeg) = segmentAngles[i];
+      final startRad = startDeg * (math.pi / 180.0);
+      final sweepRad = sweepDeg * (math.pi / 180.0);
+      canvas.drawArc(rect, startRad, sweepRad, false, strokePaint);
+    }
+
+    final dotPaint = Paint()
+      ..color = navyColor
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset.zero, dotRadius, dotPaint);
+
+    canvas.restore();
   }
 
   // Limits painting to the part of the s that the scan line has passed. Returns false, having

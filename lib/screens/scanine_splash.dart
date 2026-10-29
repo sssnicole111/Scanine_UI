@@ -87,10 +87,10 @@ const double _taglineEnd = 3.95;
 
 // ----- sizes, in design units (the design is 390 wide; the widget scales to fit the screen) -----
 const double _designWidth = 390;
-const double _typeHeightScale = 0.91; // slightly shorter typography height ("canine" / "scanine")
+const double _typeHeightScale = 0.91; // balanced typography height scale (not too tall, not shrinked)
 const double _slit = 7; // width of the scan line
 const double _wake = 84; // length of the wake behind it
-const double _taglineDrop = 57; // tagline baseline, measured down from the middle of the letters
+const double _taglineDrop = 56; // tagline baseline, measured down from the middle of the letters
 const double _taglineRise = 6; // how far the tagline rises as it fades in
 
 /// The scanine splash. It plays once, then calls [onFinished].
@@ -101,7 +101,15 @@ class ScanineSplash extends StatefulWidget {
     this.taglineStyle,
     this.hold = const Duration(milliseconds: 500),
     this.fadeOut = const Duration(milliseconds: 350),
+    this.patternAsset = 'assets/images/splash_pattern.png',
+    this.patternOpacity = 0.70,
   });
+
+  /// Optional subtle background texture pattern asset path.
+  final String? patternAsset;
+
+  /// Opacity of the background texture pattern (0.0 to 1.0).
+  final double patternOpacity;
 
   /// Called once, when the splash has finished fading out. Open the next screen here.
   final VoidCallback onFinished;
@@ -211,7 +219,7 @@ class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProvider
 
   TextPainter _layOutTagline() {
     const TextStyle base = TextStyle(
-      fontFamily: 'Manrope',
+      fontFamily: 'Urbanist',
       fontWeight: FontWeight.w500,
       fontSize: 17.85,
       letterSpacing: 0.0,
@@ -244,17 +252,39 @@ class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProvider
         textDirection: TextDirection.ltr,
         image: true,
         child: RepaintBoundary(
-          child: SizedBox.expand(
-            child: CustomPaint(
-              painter: _SplashPainter(
-                clock: _clock,
-                wordmark: _wordmark,
-                tagline: _tagline,
-                motion: _motion,
-                hold: _hold,
-                fadeOut: _fadeOut,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Base cloud background
+              const DecoratedBox(
+                decoration: BoxDecoration(color: _cloud),
               ),
-            ),
+              // 2. Subtle watercolor pattern texture
+              if (widget.patternAsset != null)
+                Opacity(
+                  opacity: widget.patternOpacity,
+                  child: Image.asset(
+                    widget.patternAsset!,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              // 3. Foreground animated wordmark, sweep & tagline
+              SizedBox.expand(
+                child: CustomPaint(
+                  painter: _SplashPainter(
+                    clock: _clock,
+                    wordmark: _wordmark,
+                    tagline: _tagline,
+                    motion: _motion,
+                    hold: _hold,
+                    fadeOut: _fadeOut,
+                    hasPattern: widget.patternAsset != null,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -270,15 +300,17 @@ class _SplashPainter extends CustomPainter {
     required this.motion,
     required this.hold,
     required this.fadeOut,
+    this.hasPattern = false,
   }) : super(repaint: clock);
 
   final Animation<double> clock;
   final _Wordmark wordmark;
   final TextPainter tagline;
   final double motion, hold, fadeOut; // in seconds
+  final bool hasPattern;
 
   // Everything that fades out together lives inside this box (design units, centred on the screen).
-  static const Rect _sceneBounds = Rect.fromLTRB(-195, -70, 195, 110);
+  static const Rect _sceneBounds = Rect.fromLTRB(-195, -80, 195, 110);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -317,7 +349,9 @@ class _SplashPainter extends CustomPainter {
   // A soft oval glow: centred just above the middle, reaching 72% of the width and of the height.
   void _paintBackground(Canvas canvas, Size size) {
     final double w = size.width, h = size.height;
-    canvas.drawRect(Offset.zero & size, Paint()..color = _cloud);
+    if (!hasPattern) {
+      canvas.drawRect(Offset.zero & size, Paint()..color = _cloud);
+    }
     canvas.save();
     canvas.translate(0.5 * w, 0.49 * h);
     canvas.scale(0.72 * w, 0.72 * h);
@@ -327,7 +361,13 @@ class _SplashPainter extends CustomPainter {
         ..shader = ui.Gradient.radial(
           Offset.zero,
           1,
-          const <Color>[_cloudHi, _cloud, _cloudLo],
+          hasPattern
+              ? const <Color>[
+                  Color(0x25F9FAFD),
+                  Color(0x00EEF1F6),
+                  Color(0x20E6EAF2),
+                ]
+              : const <Color>[_cloudHi, _cloud, _cloudLo],
           const <double>[0, 0.5, 1],
         ),
     );
@@ -425,7 +465,8 @@ class _SplashPainter extends CustomPainter {
         oldDelegate.tagline != tagline ||
         oldDelegate.motion != motion ||
         oldDelegate.hold != hold ||
-        oldDelegate.fadeOut != fadeOut;
+        oldDelegate.fadeOut != fadeOut ||
+        oldDelegate.hasPattern != hasPattern;
   }
 }
 
@@ -449,14 +490,14 @@ class _Wordmark {
   static const double _xHeight = 38;
   static const double _bowl = 15; // radius of the round letters, measured to the middle of the stroke
   static const double _middle = -19; // the middle of the letters' height
-  static const double _dotRadius = 5;
+  static const double _iconSize = 19.0;
   static const double _dotPop = 0.22; // how long the dot of the i takes to pop in
 
   /// Where the baseline sits below the middle of the letters.
   static const double baseline = 19;
 
   /// Top and bottom of everything the letters can cover, with a little room to spare.
-  static const double top = -60, bottom = 8;
+  static const double top = -72, bottom = 8;
 
   final List<List<_Stroke>> _letters = <List<_Stroke>>[];
   late final Offset _dotCentre;
@@ -477,7 +518,6 @@ class _Wordmark {
     ..strokeWidth = 8
     ..strokeCap = StrokeCap.butt
     ..strokeJoin = StrokeJoin.miter;
-  final Paint _fill = Paint();
 
   // Angles are in degrees, measured clockwise on screen from "3 o'clock" (so -90 is the top).
   static double _deg(double degrees) => degrees * math.pi / 180;
@@ -529,7 +569,7 @@ class _Wordmark {
 
     // i: the stem, then the dot pops
     _letters.add(<_Stroke>[_stem(x + 4, startOf(4))]);
-    _dotCentre = Offset(x + 4, -_xHeight - 9);
+    _dotCentre = Offset(x + 4, -_xHeight - 16.5);
     _dotStart = startOf(4) + 0.28;
     x += 8 + 6;
 
@@ -596,13 +636,11 @@ class _Wordmark {
     }
     if (m >= _dotStart) {
       final double pop = _softBack(_seg(m, _dotStart, _dotStart + _dotPop));
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: _dotCentre,
-          width: 2 * _dotRadius * pop,
-          height: 2 * _dotRadius * pop / _typeHeightScale,
-        ),
-        _fill..color = _ink,
+      _paintIcon(
+        canvas,
+        pop,
+        navyColor: _ink,
+        grayColor: const Color(0xFFC5CAD6),
       );
     }
   }
@@ -621,14 +659,73 @@ class _Wordmark {
         canvas.restore();
       }
     }
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: _dotCentre,
-        width: 2 * _dotRadius,
-        height: 2 * _dotRadius / _typeHeightScale,
-      ),
-      _fill..color = color,
+    _paintIcon(
+      canvas,
+      1.0,
+      navyColor: color,
+      grayColor: color,
+      uniformColor: true,
     );
+  }
+
+  /// Paints the official Scanine brand mark icon replacing the dot above the "i".
+  /// Consists of five separate outer C-shaped segments, a fixed navy center dot,
+  /// and a right-facing opening.
+  void _paintIcon(
+    Canvas canvas,
+    double pop, {
+    required Color navyColor,
+    required Color grayColor,
+    bool uniformColor = false,
+  }) {
+    if (pop <= 0.001) return;
+
+    final double size = _iconSize * pop;
+    final double arcRadius = size * (72.0 / 192.0);
+    final double strokeWidth = size * (24.0 / 192.0);
+    final double dotRadius = size * (19.5 / 192.0);
+
+    // Segment definitions (in degrees, clockwise from 3 o'clock):
+    // 1. Lower right: 35.0° -> 87.0° (sweep 52.0°)
+    // 2. Lower left:  95.0° -> 147.0° (sweep 52.0°)
+    // 3. Left:        155.0° -> 207.0° (sweep 52.0°)
+    // 4. Upper left:  215.0° -> 267.0° (sweep 52.0°)
+    // 5. Upper right: 275.0° -> 327.0° (sweep 52.0°)
+    const segmentAngles = [
+      (35.0, 52.0),
+      (95.0, 52.0),
+      (155.0, 52.0),
+      (215.0, 52.0),
+      (275.0, 52.0),
+    ];
+
+    final rect = Rect.fromCircle(center: Offset.zero, radius: arcRadius);
+
+    canvas.save();
+    canvas.translate(_dotCentre.dx, _dotCentre.dy);
+    // Counteract _typeHeightScale so the icon is rendered as a true circle
+    canvas.scale(1.0, 1.0 / _typeHeightScale);
+
+    final strokePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.butt;
+
+    for (int i = 0; i < 5; i++) {
+      final isNavy = uniformColor || (i < 3);
+      strokePaint.color = isNavy ? navyColor : grayColor;
+      final (startDeg, sweepDeg) = segmentAngles[i];
+      final startRad = startDeg * (math.pi / 180.0);
+      final sweepRad = sweepDeg * (math.pi / 180.0);
+      canvas.drawArc(rect, startRad, sweepRad, false, strokePaint);
+    }
+
+    final dotPaint = Paint()
+      ..color = navyColor
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset.zero, dotRadius, dotPaint);
+
+    canvas.restore();
   }
 
   // Limits painting to the part of the s that the scan line has passed. Returns false, having

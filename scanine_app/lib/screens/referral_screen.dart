@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/clinic.dart';
@@ -88,11 +89,20 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: T.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: T.bg,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: T.bg,
+        body: SafeArea(
+          bottom: false, // bg bleeds behind nav bar
+          child: Column(
+            children: [
             _Header(result: widget.result),
             if (_loading)
               const Expanded(
@@ -117,7 +127,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
               // leave too little room for ten clinics.
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s6),
+                  padding: EdgeInsets.fromLTRB(
+                    T.s5,
+                    0,
+                    T.s5,
+                    T.s6 + MediaQuery.of(context).padding.bottom,
+                  ),
                   children: [
                     Container(
                       decoration: BoxDecoration(
@@ -211,6 +226,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }

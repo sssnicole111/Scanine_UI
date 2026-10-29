@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import '../ml/image_quality.dart';
 import '../theme/routes.dart';
 import '../theme/tokens.dart';
+import '../widgets/scanine_mark.dart';
 import 'analyzing_screen.dart';
 import 'upload_screen.dart';
 
@@ -32,6 +33,38 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isStreaming = false;
   bool _isProcessingFrame = false;
   int _lastSampleTimestamp = 0;
+  FlashMode _flashMode = FlashMode.off;
+
+  Future<void> _toggleFlash() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    try {
+      final FlashMode nextMode;
+      switch (_flashMode) {
+        case FlashMode.off:
+          nextMode = FlashMode.torch;
+          break;
+        case FlashMode.torch:
+          nextMode = FlashMode.auto;
+          break;
+        case FlashMode.auto:
+        default:
+          nextMode = FlashMode.off;
+          break;
+      }
+      await _controller!.setFlashMode(nextMode);
+      if (mounted) {
+        setState(() {
+          _flashMode = nextMode;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _flashMode = (_flashMode == FlashMode.off) ? FlashMode.torch : FlashMode.off;
+        });
+      }
+    }
+  }
 
   int _frameIndex = 0; // how many frames have been accepted so far
   String? _errorTitle;
@@ -303,13 +336,20 @@ class _CameraScreenState extends State<CameraScreen> {
     const cloudBg = Color(0xFFEEF1F6);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: cloudBg,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
       child: Scaffold(
         backgroundColor: cloudBg,
         body: Stack(
           fit: StackFit.expand,
           children: [
             SafeArea(
+              bottom: false, // bg bleeds behind nav bar
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 22),
                 child: Column(
@@ -437,27 +477,19 @@ class _CameraScreenState extends State<CameraScreen> {
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 220),
                       child: Text(
-                        _capturing
-                            ? (_rejectWarning ??
-                                  'Capturing frame $_frameIndex of $kTotalFrames…')
-                            : (_rejectWarning ?? _liveQuality.feedbackMessage),
+                        _rejectWarning ?? _liveQuality.feedbackMessage,
                         key: ValueKey(
-                          _capturing
-                              ? 'burst_$_frameIndex${_rejectWarning ?? ""}'
-                              : (_rejectWarning ??
-                                    _liveQuality.feedbackMessage),
+                          _rejectWarning ?? _liveQuality.feedbackMessage,
                         ),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'InstrumentSans',
                           fontSize: 13.5,
-                          fontWeight: (_rejectWarning != null || _capturing)
+                          fontWeight: _rejectWarning != null
                               ? FontWeight.w600
                               : FontWeight.w400,
                           color: _rejectWarning != null
                               ? const Color(0xFFD49339)
-                              : _capturing
-                              ? const Color(0xFF193863)
                               : const Color(0xFF5F708A),
                           letterSpacing: -0.15,
                         ),
@@ -466,7 +498,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
                     const SizedBox(height: 22),
 
-                    // ── Bottom Controls: Upload & Shutter ──────────
+                    // ── Bottom Controls: Upload, Shutter & Flash ──────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -477,14 +509,22 @@ class _CameraScreenState extends State<CameraScreen> {
                           onTap: _capture,
                           busy: _capturing,
                           isReady: _liveQuality.isAcceptable,
+                          acceptedFrames: _frameIndex,
                         ),
                         const SizedBox(width: 32),
-                        // Balancer matching _UploadButton hit area so shutter stays centered
-                        const SizedBox(width: 44, height: 44),
+                        _FlashButton(
+                          flashMode: _flashMode,
+                          onToggle: _toggleFlash,
+                          enabled: !_capturing && _ready,
+                        ),
                       ],
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    // Sit above the nav bar
+                    SizedBox(
+                      height: MediaQuery.of(context).padding.bottom + 8,
+                    ),
                   ],
                 ),
               ),
@@ -588,6 +628,59 @@ class _UploadButton extends StatelessWidget {
         padding: const EdgeInsets.all(8),
         constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
         tooltip: 'Upload from gallery',
+      ),
+    );
+  }
+}
+
+/// Flash toggle button placed on the right side of the shutter.
+class _FlashButton extends StatelessWidget {
+  const _FlashButton({
+    required this.flashMode,
+    required this.onToggle,
+    this.enabled = true,
+  });
+
+  final FlashMode flashMode;
+  final VoidCallback onToggle;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF073858);
+    const amber = Color(0xFFD49339);
+
+    final IconData icon;
+    final Color color;
+    final String tooltip;
+
+    switch (flashMode) {
+      case FlashMode.torch:
+        icon = Icons.flash_on_rounded;
+        color = amber;
+        tooltip = 'Flash: On';
+        break;
+      case FlashMode.auto:
+        icon = Icons.flash_auto_rounded;
+        color = navy;
+        tooltip = 'Flash: Auto';
+        break;
+      case FlashMode.off:
+      default:
+        icon = Icons.flash_off_rounded;
+        color = navy;
+        tooltip = 'Flash: Off';
+        break;
+    }
+
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.45,
+      child: IconButton(
+        onPressed: enabled ? onToggle : null,
+        icon: Icon(icon, color: color, size: 28),
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        tooltip: tooltip,
       ),
     );
   }
@@ -739,11 +832,13 @@ class _Shutter extends StatefulWidget {
     required this.onTap,
     required this.busy,
     required this.isReady,
+    this.acceptedFrames = 0,
   });
 
   final VoidCallback onTap;
   final bool busy;
   final bool isReady;
+  final int acceptedFrames;
 
   @override
   State<_Shutter> createState() => _ShutterState();
@@ -752,42 +847,88 @@ class _Shutter extends StatefulWidget {
 class _ShutterState extends State<_Shutter> {
   bool _pressed = false;
 
+  bool get _isTakingFrames => widget.busy || widget.acceptedFrames > 0;
+  bool get _canTap => !widget.busy && widget.acceptedFrames < kTotalFrames;
+
   @override
   Widget build(BuildContext context) {
     const navy = Color(0xFF193863);
     const amberActive = Color(0xFFD49339);
+    final clampedFrames = widget.acceptedFrames.clamp(0, 5);
 
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        if (!widget.busy) widget.onTap();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed || widget.busy ? 0.93 : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOutCubic,
-        child: Container(
-          width: 78,
-          height: 78,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: widget.isReady ? navy : const Color(0xFF8E9CB2),
-              width: 3.5,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(6.0),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: widget.busy
-                    ? amberActive
-                    : (widget.isReady ? navy : const Color(0xFF8E9CB2)),
+    return Semantics(
+      button: true,
+      enabled: _canTap,
+      label: 'Shutter button',
+      value: _isTakingFrames ? '$clampedFrames of 5 frames accepted' : null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) {
+          if (_canTap) setState(() => _pressed = true);
+        },
+        onTapUp: (_) {
+          if (_pressed) {
+            setState(() => _pressed = false);
+            if (_canTap) widget.onTap();
+          }
+        },
+        onTapCancel: () {
+          if (_pressed) setState(() => _pressed = false);
+        },
+        child: AnimatedScale(
+          scale: _pressed || widget.busy ? 0.93 : 1.0,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          child: SizedBox(
+            width: 78,
+            height: 78,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.95, end: 1.0).animate(animation),
+                  child: child,
+                ),
               ),
+              child: _isTakingFrames
+                  ? SizedBox(
+                      key: const ValueKey('segmented_shutter'),
+                      width: 78,
+                      height: 78,
+                      child: Center(
+                        child: ScanineMark(
+                          size: 72,
+                          acceptedFrames: clampedFrames,
+                        ),
+                      ),
+                    )
+                  : Container(
+                      key: const ValueKey('classic_shutter'),
+                      width: 78,
+                      height: 78,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: widget.isReady ? navy : const Color(0xFF8E9CB2),
+                          width: 3.5,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6.0),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: widget.busy
+                                ? amberActive
+                                : (widget.isReady
+                                    ? navy
+                                    : const Color(0xFF8E9CB2)),
+                          ),
+                        ),
+                      ),
+                    ),
             ),
           ),
         ),

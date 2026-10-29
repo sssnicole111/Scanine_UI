@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'analyzing_screen.dart';
 import '../theme/routes.dart';
+import '../widgets/scanine_mark.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -51,11 +52,20 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     final hasPhoto = _path != null;
 
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: background,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
       child: Scaffold(
         backgroundColor: background,
         body: SafeArea(
+          bottom: false, // Let background bleed behind nav bar
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
@@ -91,15 +101,9 @@ class _UploadScreenState extends State<UploadScreen> {
                         ),
                       ),
                     ),
-                    const Text(
-                      'scanine',
-                      style: TextStyle(
-                        fontFamily: 'InstrumentSans',
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.8,
-                        color: navy,
-                      ),
+                    const ScanineWordmark(
+                      fontSize: 22,
+                      color: navy,
                     ),
                     const SizedBox(width: 44), // Balancer
                   ],
@@ -190,30 +194,21 @@ class _UploadScreenState extends State<UploadScreen> {
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                       ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 20,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Start screening',
-                            style: TextStyle(
-                              fontFamily: 'InstrumentSans',
-                              fontSize: 16.5,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.3,
-                            ),
-                          ),
-                        ],
+                      child: const Text(
+                        'Start screening',
+                        style: TextStyle(
+                          fontFamily: 'InstrumentSans',
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.3,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  // Pad below button so it sits above the system nav bar
+                  SizedBox(height: bottomInset + 16),
                 ] else
-                  const SizedBox(height: 16),
+                  SizedBox(height: bottomInset + 16),
               ],
             ),
           ),
@@ -275,6 +270,16 @@ class _UploadDropzoneCard extends StatelessWidget {
                 letterSpacing: -0.4,
               ),
             ),
+            const SizedBox(height: 6),
+            const Text(
+              'Choose an image from your gallery',
+              style: TextStyle(
+                fontFamily: 'InstrumentSans',
+                fontSize: 13.5,
+                fontWeight: FontWeight.w400,
+                color: Color(0xFF526B85),
+              ),
+            ),
           ],
         ),
       ),
@@ -329,7 +334,7 @@ class _PreviewCard extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.check_circle_rounded,
-                    color: Color(0xFF10B981),
+                    color: navy,
                     size: 18,
                   ),
                   SizedBox(width: 6),

@@ -3,65 +3,102 @@
 // Analyzing screen — sits between Capture / Upload and Result.
 //
 // Design: the user's photo fills a rounded card on the cloud background.
-// A dark-brown dim (52 %, #2a1d12) fades in over the photo. A scan line sweeps
-// top→bottom (0.5–1.7 s). Where Grad-CAM found heat, the dim has a soft hole
-// and the cleared areas receive a warm amber tint. This is the only visual
-// treatment; the Result screen's own jet-colour heatmap overlay is untouched.
+// A dark-brown dim fades in over the photo, a scan line sweeps top→bottom,
+// and where Grad-CAM found heat the dim has a soft hole with an amber tint.
 //
-// Timeline (seconds, kMinAnalyzeMs = 3000):
-//   0.00–0.45  dim fades in
-//   0.45–0.50  scan line appears
-//   0.50–1.70  scan line sweeps, dim clears above the line
-//   1.70–2.40  hold — cleared areas stay
-//   2.40–3.00  handoff — dim/tint/line fade out while Result overlay fades in
+// What's real on this screen (vs. cosmetic):
+//   • Each thumbnail lights up when ITS frame has actually been classified,
+//     and shows that frame's label + confidence as a chip.
+//   • The header counter and hint text follow the real pipeline stage.
+//   • When all frames are in, the hint reads "N of M frames agree".
+//
+// Timeline (seconds, kAnalyzePaceMs = 5200) — animation is a FLOOR, not a gate:
+//   0.00–0.60  dim fades in
+//   0.80       waits (max kOverlayWait) until the heat overlay is built, so the
+//              sweep reveals real data instead of popping it in afterwards
+//   0.80–3.40  scan line sweeps
+//   3.40–4.50  hold (waits here until inference is ready)
+//   4.50–5.20  handoff into Result
+//
+// Safety rules:
+//   • Navigation only happens once inference is ready (all paths, including
+//     reduced motion) or after the failure path fires.
+//   • Inference has a hard timeout (kInferenceTimeout) that routes to the
+//     same failure path as a thrown error.
+//   • All UI copy derives from imagePaths.length (1 photo = TTA mode).
 //
 // Data flow:
 //   CameraScreen → AnalyzingScreen(imagePaths: [...])
-//   AnalyzingScreen runs inference once, builds ScanTrace + renderHeatmap PNG.
 //   → ResultScreen(result: ..., trace: ...)
 
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../ml/analyzing/amber_overlay_image.dart';
 import '../ml/analyzing/amber_scan_painter.dart';
-import '../ml/analyzing/analyze_timeline.dart';
 import '../ml/analyzing/scan_trace.dart';
 import '../ml/classifier.dart';
 import '../ml/heatmap.dart';
 import '../models/screening_result.dart';
-import '../theme/tokens.dart';
-import 'camera_screen.dart' show CaptureProgressBar, kTotalFrames;
+import 'camera_screen.dart' show CaptureProgressBar;
 import 'result_screen.dart';
 
 // ── Public constants ──────────────────────────────────────────────────────────
-/// Deliberate pace for the visual screening process so the user can clearly
-/// follow the sweep, attention focus reveals, and multi-frame processing (5.2s).
 const int kAnalyzePaceMs = 5200;
 
-// Re-exported for backwards compatibility
+@Deprecated('Pacing is stage-driven now; use kAnalyzePaceMs.')
 const int kMinAnalyzeMs = 3000;
 
-const double _kDimEnd = 0.6 / 5.2;     // 0.1154: dim reaches full 52%
-const double _kScanStart = 0.8 / 5.2;  // 0.1538: scan line starts sweep
-const double _kScanEnd = 3.4 / 5.2;    // 0.6538: scan line reaches bottom (2.6s sweep)
-const double _kHoldEnd = 4.5 / 5.2;    // 0.8654: heat hold phase ends (1.1s hold)
-// 4.5s → 5.2s (0.7s): handoff transition into ResultScreen
+/// Max time the sweep waits at its start for the heat overlay to be built.
+const Duration kOverlayWait = Duration(milliseconds: 2500);
+
+// Low-end detection: measured on the raster thread (what lowEndMode actually
+// reduces), after a warm-up so start-up work doesn't cause false positives.
+const Duration _kLowEndWarmup = Duration(milliseconds: 800);
+const int _kLowEndSamples = 15;
+const int _kLowEndRasterUs = 12000;
+
+/// Hard ceiling for model load + classification + heatmap. A hang past this
+/// is treated exactly like a thrown error.
+const Duration kInferenceTimeout = Duration(seconds: 30);
+
+const double _kDimEnd = 0.6 / 5.2;
+const double _kScanStart = 0.8 / 5.2;
+const double _kScanEnd = 3.4 / 5.2;
+const double _kHoldEnd = 4.5 / 5.2;
+
+// Reduced-motion pacing: short hold floor, short handoff.
+const int _kReducedHoldMs = 1200;
+const int _kReducedHandoffMs = 400;
 
 // ── Private colours ───────────────────────────────────────────────────────────
 const _cloudBg = Color(0xFFEEF1F6);
 const _navy = Color(0xFF203661);
+const _amber = Color(0xFFC77D1A);
+const _navyTint = Color(0x1A203661);
+const _amberTint = Color(0x29C77D1A);
 const _slate = Color(0xFF6B7090);
 
-/// Minimum thumbnail decode width. Decoding at 120 px keeps memory tiny.
 const _thumbDecodeWidth = 120;
+
+enum _Stage { starting, classifying, heatmap, done }
+
+/// Outcome of the vote across frames (burst) or augmented views (TTA).
+class _Vote {
+  const _Vote(this.label, this.agree, this.total, this.bestIdx);
+  final String label;
+  final int agree;
+  final int total;
+  final int bestIdx;
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -82,10 +119,9 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     duration: const Duration(milliseconds: kAnalyzePaceMs),
   );
 
-  // Derived animations, all driven from _ctrl (no extra setState per frame).
-  late final Animation<double> _dimAnim; // opacity of the brown dim
-  late final Animation<double> _scanAnim; // scan line position 0→1
-  late final Animation<double> _handoffAnim; // result overlay fade-in
+  late final Animation<double> _dimAnim;
+  late final Animation<double> _scanAnim;
+  late final Animation<double> _handoffAnim;
 
   // ── Inference state ────────────────────────────────────────────────────────
   bool _inferenceReady = false;
@@ -93,64 +129,70 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   bool _failed = false;
   bool _animStarted = false;
 
+  /// Completes when the overlay is built (or known to be unavailable).
+  final Completer<void> _overlaySettled = Completer<void>();
+  void _settleOverlay() {
+    if (!_overlaySettled.isCompleted) _overlaySettled.complete();
+  }
+
+  _Stage _stage = _Stage.starting;
+  int _framesDone = 0;
+
   ScanTrace? _trace;
   List<FrameResult>? _frames;
   String? _bestPath;
   Uint8List? _heatmapPng;
-  bool _useTta = false;
-  ui.Image? _overlayImage; // 112×112 heat image for painter
+  ui.Image? _overlayImage;
+  _Vote? _vote;
 
-  // ── Frame time sampling (low-end detection) ────────────────────────────────
-  final Stopwatch _sw = Stopwatch()..start();
-  int _lastUs = -1;
+  /// Live per-thumbnail results. null = not classified yet.
+  late final List<FrameResult?> _thumbResults =
+      List<FrameResult?>.filled(widget.imagePaths.length, null);
+
+  /// One photo → test-time augmentation; several → live burst.
+  bool get _useTta => widget.imagePaths.length == 1;
+
+  /// Safe to touch state / navigate.
+  bool get _alive => mounted && !_failed && !_finished;
+
+  // ── Low-end detection (raster-thread timings, after warm-up) ──────────────
+  final Stopwatch _sw = Stopwatch();
   int _samples = 0;
-  int _sumUs = 0;
+  int _sumRasterUs = 0;
   bool _lowEnd = false;
+  bool _timingsAttached = false;
 
   // ── Thumbnails ─────────────────────────────────────────────────────────────
   final List<ui.Image?> _thumbs = [];
-  final List<double> _thumbOpacity = [];
 
   // ── Photo sizing ───────────────────────────────────────────────────────────
   Size _photoSize = const Size(3, 4);
+  ImageStream? _photoStream;
+  ImageStreamListener? _photoListener;
 
-  // ── Reduced motion ─────────────────────────────────────────────────────────
   bool _reducedMotion = false;
 
-  // ── Hero tag ───────────────────────────────────────────────────────────────
   static const _heroTag = 'scanine.analyzing.photo';
 
   @override
   void initState() {
     super.initState();
 
-    // Build derived animations (intervals match the deliberate screening timeline).
     _dimAnim = CurvedAnimation(
       parent: _ctrl,
-      // 0.00→0.60 s (dim fades in)
       curve: const Interval(0.0, _kDimEnd, curve: Curves.easeOut),
     );
     _scanAnim = CurvedAnimation(
       parent: _ctrl,
-      // 0.80→3.40 s (steady 2.6s scan sweep showing attention heatmap emergence)
-      curve: const Interval(
-        _kScanStart,
-        _kScanEnd,
-        curve: _ScanEaseCurve(),
-      ),
+      curve: const Interval(_kScanStart, _kScanEnd, curve: _ScanEaseCurve()),
     );
     _handoffAnim = CurvedAnimation(
       parent: _ctrl,
-      // 4.50→5.20 s (handoff fade into ResultScreen)
       curve: const Interval(_kHoldEnd, 1.0, curve: Curves.easeInOut),
     );
 
-    _ctrl.addListener(_sampleFrameTime);
-
     _resolvePhotoSize();
-    final n = widget.imagePaths.length;
-    _thumbs.addAll(List<ui.Image?>.filled(n, null));
-    _thumbOpacity.addAll(List<double>.filled(n, 0.40));
+    _thumbs.addAll(List<ui.Image?>.filled(widget.imagePaths.length, null));
   }
 
   @override
@@ -162,10 +204,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     _scheduleScanning();
   }
 
-  /// Gives the screen switch time to complete cleanly first so the transition
-  /// is completely smooth and unburdened by heavy inference or animation loops.
   Future<void> _scheduleScanning() async {
-    // 1. Wait for the route transition (switch screens) to complete.
     final route = ModalRoute.of(context);
     final routeAnim = route?.animation;
     if (routeAnim != null && !routeAnim.isCompleted) {
@@ -184,13 +223,9 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     }
 
     if (!mounted) return;
-
-    // 2. Calm switch settle pause: gives visual breathing room before scanning starts.
     await Future<void>.delayed(const Duration(milliseconds: 250));
-
     if (!mounted) return;
 
-    // 3. Now start thumbnail decoding, inference, and the scanning animation.
     _decodeAllThumbs();
     _begin();
   }
@@ -201,21 +236,29 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     if (widget.imagePaths.isEmpty) return;
     final file = File(widget.imagePaths.first);
     if (!file.existsSync()) return;
-    FileImage(file)
-        .resolve(ImageConfiguration.empty)
-        .addListener(ImageStreamListener((info, _) {
-      if (!mounted) return;
+
+    final stream = FileImage(file).resolve(ImageConfiguration.empty);
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener((info, sync) {
       final w = info.image.width.toDouble();
       final h = info.image.height.toDouble();
-      if (w > 0 && h > 0) {
+      stream.removeListener(listener);
+      _photoStream = null;
+      _photoListener = null;
+      if (w <= 0 || h <= 0) return;
+      if (sync) {
+        _photoSize = Size(w, h);
+      } else if (mounted) {
         setState(() => _photoSize = Size(w, h));
       }
-    }));
+    });
+    _photoStream = stream;
+    _photoListener = listener;
+    stream.addListener(listener);
   }
 
   void _decodeAllThumbs() {
-    final n = widget.imagePaths.length;
-    for (var i = 0; i < n; i++) {
+    for (var i = 0; i < widget.imagePaths.length; i++) {
       _decodeThumb(i);
     }
   }
@@ -223,10 +266,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   Future<void> _decodeThumb(int index) async {
     try {
       final path = widget.imagePaths[index];
-      final file = File(path);
-      if (!file.existsSync()) return;
-
-      // Decode at reduced resolution to keep memory tiny.
+      if (!File(path).existsSync()) return;
       final codec = await ui.instantiateImageCodecFromBuffer(
         await ui.ImmutableBuffer.fromFilePath(path),
         targetWidth: _thumbDecodeWidth,
@@ -238,68 +278,64 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       }
       setState(() => _thumbs[index] = frame.image);
     } catch (_) {
-      // Non-fatal — leave thumb slot null; shows grey placeholder.
+      // Non-fatal — grey placeholder stays.
     }
   }
 
   // ── Animation start ────────────────────────────────────────────────────────
 
   void _begin() {
-    // Kick off inference in the background.
-    unawaited(_runInference().catchError((Object e, StackTrace s) {
-      _failInference(e, s);
-    }));
+    _attachTimings();
 
+    unawaited(
+      _runInference()
+          .timeout(kInferenceTimeout)
+          .catchError((Object e, StackTrace s) => _failInference(e, s)),
+    );
+
+    unawaited(_runAnimation());
+  }
+
+  Future<void> _runAnimation() async {
     if (_reducedMotion) {
-      // Skip sweep — just cross-fade the final composition.
-      _ctrl.duration = const Duration(milliseconds: 2000);
-      unawaited(
-        _ctrl.animateTo(1.0, curve: Curves.easeInOut).whenComplete(_complete),
+      await _ctrl.animateTo(
+        _kHoldEnd,
+        duration: const Duration(milliseconds: _kReducedHoldMs),
+        curve: Curves.easeInOut,
       );
+      _tryHandoff();
       return;
     }
 
-    // Deliberate normal mode: animate steadily from 0 → hold end (_kHoldEnd).
-    // The scan line sweeps steadily over 2.6 seconds, then holds for 1.1s so
-    // the user can clearly see the lesion attention focus areas.
-    unawaited(
-      _ctrl
-          .animateTo(
-            _kHoldEnd,
-            duration: Duration(
-              milliseconds: (kAnalyzePaceMs * _kHoldEnd).round(),
-            ),
-            curve: Curves.linear,
-          )
-          .whenComplete(_onHoldReached),
+    // 1. Dim fades in.
+    await _ctrl.animateTo(
+      _kScanStart,
+      duration: Duration(milliseconds: (kAnalyzePaceMs * _kScanStart).round()),
+      curve: Curves.linear,
     );
+    if (!_alive) return;
 
-    // Schedule 5 thumbnail light-ups across the 2.6s sweep (0.8s - 3.4s).
-    for (var i = 0; i < widget.imagePaths.length; i++) {
-      final delay = Duration(milliseconds: 900 + (i * 500));
-      Future<void>.delayed(delay, () {
-        if (!mounted) return;
-        setState(() => _thumbOpacity[i] = 1.0);
-      });
-    }
+    // 2. Wait (bounded) for the heat overlay so the sweep reveals real data.
+    await _overlaySettled.future.timeout(kOverlayWait, onTimeout: () {});
+    if (!_alive) return;
+
+    // 3. Sweep + hold, then hand off once inference is ready.
+    await _ctrl.animateTo(
+      _kHoldEnd,
+      duration: Duration(
+        milliseconds: (kAnalyzePaceMs * (_kHoldEnd - _kScanStart)).round(),
+      ),
+      curve: Curves.linear,
+    );
+    _tryHandoff();
   }
 
-  void _onHoldReached() {
-    if (!mounted || _failed || _finished) return;
-    if (_inferenceReady) {
-      _runToEnd();
-    } else {
-      // Inference is still running; wait in the hold-phase.
-      // We resume once inference completes via _maybeResume.
-    }
-  }
-
-  void _maybeResume() {
-    if (!mounted || _failed || _finished || _reducedMotion) return;
-    // Only continue into handoff if the animation has finished the hold phase
-    if (!_ctrl.isAnimating && _ctrl.value >= _kHoldEnd) {
-      _runToEnd();
-    }
+  /// Called when the hold animation ends AND when inference finishes —
+  /// whichever comes last triggers the handoff.
+  void _tryHandoff() {
+    if (!_alive || !_inferenceReady) return;
+    if (_ctrl.isAnimating || _ctrl.value < _kHoldEnd) return;
+    _runToEnd();
   }
 
   void _runToEnd() {
@@ -309,42 +345,32 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       _complete();
       return;
     }
-    final ms = (remaining * kAnalyzePaceMs).round();
+    final ms = _reducedMotion
+        ? _kReducedHandoffMs
+        : (remaining * kAnalyzePaceMs).round();
     unawaited(
       _ctrl
-          .animateTo(1.0, duration: Duration(milliseconds: ms), curve: Curves.linear)
+          .animateTo(1.0,
+              duration: Duration(milliseconds: ms), curve: Curves.linear)
           .whenComplete(_complete),
     );
   }
 
-  // ── Inference pipeline ─────────────────────────────────────────────────────
+  // ── Inference pipeline ────────────────────────────────────────────────────
 
-  Future<void> _runInference() async {
-    final classifier = Classifier();
-    if (!classifier.isReady) await classifier.load();
+  void _set(VoidCallback fn) {
+    if (_alive) setState(fn);
+  }
 
-    final bool useTta = widget.imagePaths.length == 1;
-    final frames = <FrameResult>[];
-
-    if (useTta) {
-      frames.addAll(await classifier.classifyFileTta(widget.imagePaths.first));
-    } else {
-      for (final path in widget.imagePaths) {
-        frames.add(await classifier.classifyFile(path));
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-      }
+  _Vote _tally(List<FrameResult> frames, {required bool tta}) {
+    final counts = <String, int>{};
+    for (final r in frames) {
+      counts[r.label] = (counts[r.label] ?? 0) + 1;
     }
-
-    // Determine winner and representative frame (index 0 for TTA; best-vote
-    // frame for live burst — same logic as before).
+    final winner =
+        counts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
     var bestIdx = 0;
-    if (!useTta) {
-      final counts = <String, int>{};
-      for (final r in frames) {
-        counts[r.label] = (counts[r.label] ?? 0) + 1;
-      }
-      final winner =
-          counts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    if (!tta) {
       var bestConf = -1.0;
       for (var i = 0; i < frames.length; i++) {
         if (frames[i].label == winner && frames[i].confidence > bestConf) {
@@ -353,26 +379,54 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
         }
       }
     }
-    final best = frames[bestIdx];
-    final bestPath =
-        useTta ? widget.imagePaths.first : widget.imagePaths[bestIdx];
+    return _Vote(winner, counts[winner]!, frames.length, bestIdx);
+  }
 
-    // Build ScanTrace once, from the representative frame's cam values.
+  Future<void> _runInference() async {
+    final classifier = Classifier();
+    if (!classifier.isReady) await classifier.load();
+    if (!_alive) return;
+
+    _set(() => _stage = _Stage.classifying);
+
+    final tta = _useTta;
+    final frames = <FrameResult>[];
+
+    if (tta) {
+      frames.addAll(await classifier.classifyFileTta(widget.imagePaths.first));
+      if (!_alive) return;
+      if (frames.isNotEmpty) {
+        _set(() => _thumbResults[0] = frames.first);
+      }
+    } else {
+      for (var i = 0; i < widget.imagePaths.length; i++) {
+        final r = await classifier.classifyFile(widget.imagePaths[i]);
+        if (!_alive) return;
+        frames.add(r);
+        _set(() {
+          _thumbResults[i] = r;
+          _framesDone = i + 1;
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      }
+    }
+
+    final vote = _tally(frames, tta: tta);
+    final best = frames[vote.bestIdx];
+    final bestPath =
+        tta ? widget.imagePaths.first : widget.imagePaths[vote.bestIdx];
+
+    _set(() {
+      _vote = vote;
+      _stage = _Stage.heatmap;
+    });
+
     final trace = ScanTrace.fromCam(
       cam: best.cam,
       camWidth: best.camW,
       camHeight: best.camH,
     );
 
-    // Render jet-colour PNG for ResultScreen's Photo/Heatmap toggle.
-    final Uint8List? heatmapPng = await renderHeatmap(
-      photoPath: bestPath,
-      cam: best.cam,
-      camH: best.camH,
-      camW: best.camW,
-    );
-
-    // Build the 112×112 overlay image for the painter (amber tint + dim mask).
     ui.Image? overlayImg;
     if (!trace.diffuse) {
       try {
@@ -387,49 +441,80 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       }
     }
 
-    if (!mounted) {
+    if (!_alive) {
       overlayImg?.dispose();
+      _settleOverlay();
       return;
     }
 
-    _frames = frames;
-    _bestPath = bestPath;
-    _heatmapPng = heatmapPng;
-    _useTta = useTta;
-    _trace = trace;
-    _overlayImage = overlayImg;
-    _inferenceReady = true;
+    setState(() {
+      _trace = trace;
+      _overlayImage = overlayImg;
+    });
+    _settleOverlay();
 
-    // If the animation has already reached the hold, resume immediately.
-    _maybeResume();
+    final Uint8List? heatmapPng = await renderHeatmap(
+      photoPath: bestPath,
+      cam: best.cam,
+      camH: best.camH,
+      camW: best.camW,
+    );
+    if (!_alive) return;
+
+    setState(() {
+      _frames = frames;
+      _bestPath = bestPath;
+      _heatmapPng = heatmapPng;
+      _inferenceReady = true;
+      _stage = _Stage.done;
+    });
+
+    _tryHandoff();
   }
 
-  // ── Frame time sampling (low-end mode) ────────────────────────────────────
+  // ── Low-end detection ─────────────────────────────────────────────────────
 
-  void _sampleFrameTime() {
-    if (_lowEnd || _samples >= 10 || kDebugMode) return;
-    final now = _sw.elapsedMicroseconds;
-    if (_lastUs >= 0) {
-      _sumUs += now - _lastUs;
-      _samples++;
-      if (_samples == 10 && _sumUs / 10 > 20000) {
-        // > 20 ms/frame average → low-end device.
-        _lowEnd = true;
-      }
+  void _attachTimings() {
+    if (kDebugMode || _timingsAttached) return;
+    _timingsAttached = true;
+    _sw
+      ..reset()
+      ..start();
+    SchedulerBinding.instance.addTimingsCallback(_onTimings);
+  }
+
+  void _detachTimings() {
+    if (!_timingsAttached) return;
+    _timingsAttached = false;
+    SchedulerBinding.instance.removeTimingsCallback(_onTimings);
+  }
+
+  void _onTimings(List<ui.FrameTiming> timings) {
+    if (_sw.elapsed < _kLowEndWarmup) return;
+    for (final t in timings) {
+      _sumRasterUs += t.rasterDuration.inMicroseconds;
+      if (++_samples >= _kLowEndSamples) break;
     }
-    _lastUs = now;
+    if (_samples >= _kLowEndSamples) {
+      _lowEnd = _sumRasterUs / _samples > _kLowEndRasterUs;
+      _detachTimings();
+    }
   }
 
   // ── Error handling ─────────────────────────────────────────────────────────
 
   void _failInference(Object e, StackTrace s) {
     developer.log(
-      'Analyzing inference failed — showing spinner then navigating.',
+      e is TimeoutException
+          ? 'Analyzing inference timed out.'
+          : 'Analyzing inference failed.',
       name: 'scanine.analyzing',
       error: e,
       stackTrace: s,
     );
-    if (!mounted || _failed) return;
+    if (!mounted || _failed || _finished) return;
+    _ctrl.stop();
+    _settleOverlay();
     setState(() => _failed = true);
     unawaited(
       Future<void>.delayed(const Duration(milliseconds: 800), () {
@@ -437,7 +522,8 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
         _finished = true;
         _navigateToResult(
           frames: [],
-          bestPath: widget.imagePaths.isNotEmpty ? widget.imagePaths.first : '',
+          bestPath:
+              widget.imagePaths.isNotEmpty ? widget.imagePaths.first : '',
           heatmapPng: null,
           useTta: false,
           trace: null,
@@ -447,11 +533,12 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   }
 
   void _complete() {
-    if (!mounted || _finished) return;
+    if (!mounted || _finished || _failed) return;
     _finished = true;
     _navigateToResult(
       frames: _frames ?? [],
-      bestPath: _bestPath ?? (widget.imagePaths.isNotEmpty ? widget.imagePaths.first : ''),
+      bestPath: _bestPath ??
+          (widget.imagePaths.isNotEmpty ? widget.imagePaths.first : ''),
       heatmapPng: _heatmapPng,
       useTta: _useTta,
       trace: _trace,
@@ -481,10 +568,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
             ResultScreen(result: result, trace: trace),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             FadeTransition(
-          opacity: CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeInOut,
-          ),
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
           child: child,
         ),
       ),
@@ -493,7 +577,9 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
 
   @override
   void dispose() {
-    _ctrl.removeListener(_sampleFrameTime);
+    _detachTimings();
+    final ps = _photoStream, pl = _photoListener;
+    if (ps != null && pl != null) ps.removeListener(pl);
     _ctrl.dispose();
     _overlayImage?.dispose();
     for (final t in _thumbs) {
@@ -502,22 +588,58 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     super.dispose();
   }
 
+  // ── Copy derived from real state ───────────────────────────────────────────
+
+  String _hintText() {
+    final n = widget.imagePaths.length;
+    switch (_stage) {
+      case _Stage.starting:
+        return 'Preparing screening model…';
+      case _Stage.classifying:
+        return _useTta
+            ? 'Analyzing photo…'
+            : 'Classifying frame ${math.min(_framesDone + 1, n)} of $n…';
+      case _Stage.heatmap:
+        return 'Building attention map…';
+      case _Stage.done:
+        return _agreementText();
+    }
+  }
+
+  String _agreementText() {
+    final v = _vote;
+    if (v == null) return 'Finalizing screening summary…';
+    final unit = _useTta ? 'views' : 'frames';
+    final base = '${v.agree} of ${v.total} $unit agree';
+    return v.agree == v.total ? base : '$base · mixed results';
+  }
+
+  String _headerText() {
+    if (_useTta) return 'SINGLE PHOTO';
+    return 'ANALYZED $_framesDone / ${widget.imagePaths.length}';
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: _cloudBg,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
       child: Scaffold(
         backgroundColor: _cloudBg,
         body: Semantics(
           liveRegion: true,
-          label: 'Analyzing photo.',
+          label: 'Analyzing photo. ${_hintText()}',
           child: SafeArea(
+            bottom: false, // bg bleeds behind nav bar
             child: _failed
-                ? Center(
-                    child: CircularProgressIndicator(color: _navy),
-                  )
+                ? const Center(child: CircularProgressIndicator(color: _navy))
                 : _body(),
           ),
         ),
@@ -541,27 +663,24 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
           _thumbRow(),
           const SizedBox(height: 14),
           _disclaimer(),
-          const SizedBox(height: 16),
+          // Sit above the system nav bar
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
         ],
       ),
     );
   }
 
-  // ── Header: 5 segments (all filled navy) + "FRAME 5 / 5" ──────────────────
+  // ── Header: progress bar + live counter ───────────────────────────────────
 
   Widget _header() {
+    final n = widget.imagePaths.length;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // All 5 segments filled: pass currentIndex == totalFrames so every
-        // segment gets the "captured" amber colour (matches camera screen at 5/5).
-        CaptureProgressBar(
-          currentIndex: kTotalFrames,
-          totalFrames: kTotalFrames,
-        ),
+        CaptureProgressBar(currentIndex: n, totalFrames: n),
         Text(
-          'FRAME $kTotalFrames / $kTotalFrames',
+          _headerText(),
           style: const TextStyle(
             fontFamily: 'InstrumentSans',
             fontSize: 12.5,
@@ -581,7 +700,9 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       builder: (context, box) {
         final cardSize = _fitPhoto(box.biggest);
         return Center(
-          child: SizedBox(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
             width: cardSize.width,
             height: cardSize.height,
             child: _card(cardSize),
@@ -592,7 +713,8 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   }
 
   Widget _card(Size size) {
-    final imagePath = widget.imagePaths.isNotEmpty ? widget.imagePaths.first : null;
+    final imagePath =
+        widget.imagePaths.isNotEmpty ? widget.imagePaths.first : null;
 
     return Container(
       decoration: BoxDecoration(
@@ -610,7 +732,6 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Photo — unaltered, never filtered or recoloured.
             if (imagePath != null && File(imagePath).existsSync())
               Hero(
                 tag: _heroTag,
@@ -623,16 +744,13 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
               )
             else
               Container(color: const Color(0xFF1A2434)),
-
-            // 2 + 3 + 4. Dim, tint, scan line — one RepaintBoundary + one painter.
             RepaintBoundary(
               child: AnimatedBuilder(
                 animation: _ctrl,
                 builder: (context, _) {
                   final scan = _scanAnim.value;
-                  // scan line is null before and after the sweep interval.
-                  final inSweep = _ctrl.value >= _kScanStart &&
-                      _ctrl.value <= _kScanEnd;
+                  final inSweep =
+                      _ctrl.value >= _kScanStart && _ctrl.value <= _kScanEnd;
                   return CustomPaint(
                     painter: AmberScanPainter(
                       scan: inSweep ? scan : null,
@@ -655,47 +773,28 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     );
   }
 
-  // ── Hint text ──────────────────────────────────────────────────────────────
+  // ── Hint text (stage-driven) ──────────────────────────────────────────────
 
   Widget _hint() {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        final text = _hintTextForProgress(_ctrl.value);
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          child: Text(
-            text,
-            key: ValueKey(text),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: 'InstrumentSans',
-              fontSize: 13.5,
-              fontWeight: FontWeight.w500,
-              color: _slate,
-              letterSpacing: -0.15,
-            ),
-          ),
-        );
-      },
+    final text = _hintText();
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: Text(
+        text,
+        key: ValueKey(text),
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontFamily: 'InstrumentSans',
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+          color: _slate,
+          letterSpacing: -0.15,
+        ),
+      ),
     );
   }
 
-  String _hintTextForProgress(double progress) {
-    if (progress < _kScanStart) {
-      return 'Scanning canine skin…';
-    } else if (progress < (_kScanStart + _kScanEnd) / 2) {
-      return 'Evaluating lesion attention & Grad-CAM heat…';
-    } else if (progress < _kScanEnd) {
-      return 'Aggregating 5-frame ensemble screening…';
-    } else if (progress < _kHoldEnd) {
-      return 'Heat focus identified. Reviewing triage…';
-    } else {
-      return 'Finalizing screening summary…';
-    }
-  }
-
-  // ── 5-frame thumbnail row ──────────────────────────────────────────────────
+  // ── Thumbnail row: each lights up with its real label + confidence ────────
 
   Widget _thumbRow() {
     const thumbW = 58.0;
@@ -703,67 +802,137 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     const radius = 12.0;
 
     return Semantics(
-      label: 'Five photos taken',
+      label: _thumbSemantics(),
       excludeSemantics: true,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List.generate(
-          widget.imagePaths.length,
-          (i) {
-            final img = i < _thumbs.length ? _thumbs[i] : null;
-            final opacity = i < _thumbOpacity.length ? _thumbOpacity[i] : 0.40;
+        children: List.generate(widget.imagePaths.length, (i) {
+          final img = i < _thumbs.length ? _thumbs[i] : null;
+          final result = i < _thumbResults.length ? _thumbResults[i] : null;
+          final lit = result != null;
 
-            return AnimatedOpacity(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOut,
-              opacity: opacity,
-              child: Stack(
-                children: [
-                  Container(
-                    width: thumbW,
-                    height: thumbH,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A2434),
-                      borderRadius: BorderRadius.circular(radius),
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOut,
+                opacity: lit ? 1.0 : 0.40,
+                child: Stack(
+                  children: [
+                    Container(
+                      width: thumbW,
+                      height: thumbH,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A2434),
+                        borderRadius: BorderRadius.circular(radius),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: img != null
+                          ? _RawImageWidget(image: img)
+                          : (File(widget.imagePaths[i]).existsSync()
+                              ? Image.file(
+                                  File(widget.imagePaths[i]),
+                                  width: thumbW,
+                                  height: thumbH,
+                                  fit: BoxFit.cover,
+                                  cacheWidth: _thumbDecodeWidth,
+                                )
+                              : null),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: img != null
-                        ? _RawImageWidget(image: img)
-                        : (File(widget.imagePaths[i]).existsSync()
-                            ? Image.file(
-                                File(widget.imagePaths[i]),
-                                width: thumbW,
-                                height: thumbH,
-                                fit: BoxFit.cover,
-                                cacheWidth: _thumbDecodeWidth,
-                              )
-                            : null),
-                  ),
-                  // Navy 2dp outline when lit (opacity >= 0.99).
-                  if (opacity >= 0.99)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(radius),
-                            border: Border.all(color: _navy, width: 2),
+                    if (lit)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(radius),
+                              border: Border.all(
+                                color: _isDissent(result) ? _amber : _navy,
+                                width: 2,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            );
-          },
+              const SizedBox(height: 5),
+              _chip(result, thumbW),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  bool _isDissent(FrameResult? r) {
+    final v = _vote;
+    return r != null && v != null && r.label != v.label;
+  }
+
+  Widget _chip(FrameResult? r, double width) {
+    final dissent = _isDissent(r);
+    final color = dissent ? _amber : _navy;
+    final pct = r == null ? '' : '${(r.confidence * 100).round()}%';
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 250),
+      opacity: r == null ? 0 : 1,
+      child: Container(
+        width: width,
+        padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 3),
+        decoration: BoxDecoration(
+          color: dissent ? _amberTint : _navyTint,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              r?.label ?? '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'InstrumentSans',
+                fontSize: 9.5,
+                fontWeight: FontWeight.w500,
+                color: color,
+              ),
+            ),
+            Text(
+              pct.isEmpty ? ' ' : pct,
+              style: TextStyle(
+                fontFamily: 'InstrumentSans',
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  String _thumbSemantics() {
+    final parts = <String>[];
+    for (var i = 0; i < _thumbResults.length; i++) {
+      final r = _thumbResults[i];
+      if (r != null) {
+        parts.add(
+            'Photo ${i + 1}: ${r.label}, ${(r.confidence * 100).round()} percent');
+      }
+    }
+    return parts.isEmpty
+        ? '${widget.imagePaths.length} photo(s) taken'
+        : parts.join('. ');
+  }
+
   // ── Disclaimer ─────────────────────────────────────────────────────────────
 
   Widget _disclaimer() {
-    return Text(
+    return const Text(
       'Preliminary screening only. Not a veterinary diagnosis.',
       textAlign: TextAlign.center,
       style: TextStyle(
@@ -789,21 +958,25 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   }
 }
 
-// ── Scan ease curve matching the spec: cubic-bezier(.45, 0, .25, 1) ──────────
+// ── Scan ease curve: cubic-bezier(.45, 0, .25, 1) ────────────────────────────
 class _ScanEaseCurve extends Curve {
   const _ScanEaseCurve();
 
   @override
   double transformInternal(double t) => _cubicBezier(0.45, 0.0, 0.25, 1.0, t);
 
-  static double _cubicBezier(double x1, double y1, double x2, double y2, double x) {
+  static double _cubicBezier(
+      double x1, double y1, double x2, double y2, double x) {
     var lo = 0.0, hi = 1.0, p = x;
     for (var i = 0; i < 40; i++) {
       final cx = _sampleX(x1, x2, p);
       final diff = cx - x;
       if (diff.abs() < 1e-7) break;
-      if (diff < 0) lo = p;
-      else hi = p;
+      if (diff < 0) {
+        lo = p;
+      } else {
+        hi = p;
+      }
       p = (lo + hi) / 2;
     }
     return _sampleX(y1, y2, p);
@@ -815,7 +988,7 @@ class _ScanEaseCurve extends Curve {
   }
 }
 
-// ── Raw ui.Image widget (avoids decode overhead of Image.memory) ──────────────
+// ── Raw ui.Image widget ───────────────────────────────────────────────────────
 class _RawImageWidget extends StatelessWidget {
   const _RawImageWidget({required this.image});
 
@@ -846,13 +1019,11 @@ class _RawImagePainter extends CustomPainter {
   }
 
   static Rect _centreRect(int iw, int ih, Size s) {
-    final scale = _max(s.width / iw, s.height / ih);
+    final scale = math.max(s.width / iw, s.height / ih);
     final pw = iw * scale;
     final ph = ih * scale;
     return Rect.fromLTWH((s.width - pw) / 2, (s.height - ph) / 2, pw, ph);
   }
-
-  static double _max(double a, double b) => a > b ? a : b;
 
   @override
   bool shouldRepaint(_RawImagePainter old) => old.image != image;
