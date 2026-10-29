@@ -255,8 +255,9 @@ class ScanineHomeScreen extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Image.asset(
-                              'assets/images/scanine_wordmark.png',
-                              height: 28,
+                              'assets/icon/icon.png',
+                              height: 32,
+                              width: 32,
                               fit: BoxFit.contain,
                             ),
                             TextButton(
