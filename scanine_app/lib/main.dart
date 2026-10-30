@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'debug/mlkit_eval_screen.dart';
 import 'screens/splash_screen.dart';
 import 'theme/tokens.dart';
+
+// Evaluation-only entry: flutter run --dart-define=MLKIT_EVAL=true
+const _mlkitEval = bool.fromEnvironment('MLKIT_EVAL');
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +52,7 @@ class ScanineApp extends StatelessWidget {
           primary: T.navy,
         ),
       ),
-      home: const SplashScreen(),
+      home: _mlkitEval ? const MlkitEvalScreen() : const SplashScreen(),
     );
   }
 }

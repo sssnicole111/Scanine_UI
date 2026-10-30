@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../ml/image_quality.dart';
+import '../ml/subject_check.dart';
 import 'analyzing_screen.dart';
 import 'crop_screen.dart';
 import '../theme/routes.dart';
@@ -21,6 +23,8 @@ class _UploadScreenState extends State<UploadScreen> {
   String? _path; // cropped photo that gets analyzed
   String? _originalPath; // as picked, so "Adjust" can re-crop from scratch
   String? _error;
+  String? _issue; // quality or dog-check problem with the selected photo
+  bool _checking = false;
 
   static const navy = Color(0xFF073858);
   static const background = Color(0xFFF5FAFC);
@@ -52,11 +56,37 @@ class _UploadScreenState extends State<UploadScreen> {
     setState(() {
       _originalPath = original;
       _path = cropped;
+      _issue = null;
     });
   }
 
-  void _analyze() {
-    if (_path == null) return;
+  /// Runs the same blur/light gate as the camera, plus the dog check. A
+  /// problem is shown with "Analyze anyway", since either check can be wrong.
+  Future<void> _analyze() async {
+    final path = _path;
+    if (path == null || _checking) return;
+    setState(() {
+      _checking = true;
+      _issue = null;
+    });
+    final quality = QualityGate.assessFile(path);
+    final subject = SubjectCheck.assessFile(path);
+    final q = await quality;
+    final s = await subject;
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      if (s.isNotDog) {
+        _issue = "We couldn't find a dog in this photo. "
+            "Choose a photo of your dog's skin.";
+      } else if (!q.isAcceptable && q.focus != FocusStatus.checking) {
+        _issue = q.feedbackMessage;
+      }
+    });
+    if (_issue == null) _proceed();
+  }
+
+  void _proceed() {
     AppRoutes.pushReplacement(
       context,
       (_) => AnalyzingScreen(imagePaths: [_path!]),
@@ -189,6 +219,58 @@ class _UploadScreenState extends State<UploadScreen> {
                   ),
                 ],
 
+                if (_issue != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF9EBEF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(top: 1),
+                              child: Icon(Icons.info_outline,
+                                  color: maroon, size: 18),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _issue!,
+                                style: const TextStyle(
+                                  fontFamily: 'InstrumentSans',
+                                  fontSize: 13,
+                                  color: maroon,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _proceed,
+                            style: TextButton.styleFrom(foregroundColor: maroon),
+                            child: const Text(
+                              'Analyze anyway',
+                              style: TextStyle(
+                                fontFamily: 'InstrumentSans',
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 16),
 
                 // ── Bottom Action Button (only shown once a photo is selected) ──
@@ -207,15 +289,23 @@ class _UploadScreenState extends State<UploadScreen> {
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                       ),
-                      child: const Text(
-                        'Start screening',
-                        style: TextStyle(
-                          fontFamily: 'InstrumentSans',
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
+                      child: _checking
+                          ? const SizedBox.square(
+                              dimension: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Start screening',
+                              style: TextStyle(
+                                fontFamily: 'InstrumentSans',
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
                     ),
                   ),
                   // Pad below button so it sits above the system nav bar
