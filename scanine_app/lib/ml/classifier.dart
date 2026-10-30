@@ -53,10 +53,10 @@ class FrameResult {
 
 /// Scanine's on-device classifier.
 ///
-/// Model run: 20261026_0111_mnv3s_baseline_seed42
+/// Model run: 20261029_1757_mnv3s_baseline_seed42  (1,735-image dataset)
 ///   Architecture : MobileNetV3-Small baseline (USE_CA=false, dropout=0.3)
-///   Test accuracy: 91.7 %  |  macro-AUC: 0.989
-///   Per-class F1 : Ringworm 0.879, Hotspot 0.868, FAD 0.851, Healthy 0.994
+///   Test accuracy: 93.9 % (n=261, 95% CI 90.8-96.6)  |  macro-AUC: 0.990
+///   Per-class F1 : Ringworm 0.897, Hotspot 0.940, FAD 0.909, Healthy 0.983
 ///
 /// The 4-class model outputs:
 ///   - Grad-CAM heatmap [1, 7, 7] at output index 0
@@ -64,8 +64,8 @@ class FrameResult {
 ///   (Ringworm, Hotspot, FAD, Healthy)
 ///
 /// Asset: assets/model/scanine.tflite  (fp32, 3.76 MB)
-/// We use fp32 (max_prob_diff < 6e-6 vs Keras) rather than fp16
-/// (max_prob_diff 0.014) or int8-dynamic (max_prob_diff 0.50).
+/// We use fp32 (max_prob_diff < 7e-6 vs Keras). fp16 (1.94 MB) gives the same
+/// test accuracy (max_prob_diff 0.010); int8-dynamic: max_prob_diff 0.32.
 ///
 /// Implemented as a singleton with concurrent-safe asynchronous loading,
 /// EXIF orientation baking, and multi-threaded CPU acceleration.

@@ -121,8 +121,10 @@ class ScreeningResult {
   ///      — catches cases where the top two probs are nearly tied
   ///   3. For a 5-frame live burst: fewer than 3 frames agree on the winner
   ///
-  /// The 0.70 threshold yields ~94% selective accuracy on the test set
-  /// (up from 93% at 0.65) while still covering 85% of images.
+  /// With model 20261029_1757 the 0.70 threshold gives 95.5% selective
+  /// accuracy on the test set while answering 92.7% of images
+  /// (threshold_table.csv). The notebook's automatic suggestion for this run
+  /// was 0.40 (answer everything); 0.70 is kept so uncertain photos are flagged.
   factory ScreeningResult.fromFrames({
     required List<FrameResult> frames,
     required String imagePath,
