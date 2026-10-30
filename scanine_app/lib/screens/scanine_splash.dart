@@ -59,38 +59,53 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 // ----- colours -----
 const Color _ink = Color(0xFF1F3864); // navy: the finished letters
-const Color _lead2 = Color(0xFF7888AB); // each stroke is led by two paler copies of itself,
-const Color _lead1 = Color(0xFFC2CBDC); // this one first, then the one above, then navy
+const Color _lead2 = Color(
+  0xFF7888AB,
+); // each stroke is led by two paler copies of itself,
+const Color _lead1 = Color(
+  0xFFC2CBDC,
+); // this one first, then the one above, then navy
 const Color _scanLine = Color(0xFFDCE1EB); // the scan line: light grey
-const Color _scanWake = Color(0xFF8E99B0); // the wake behind it: a mid grey that fades back to navy
+const Color _scanWake = Color(
+  0xFF8E99B0,
+); // the wake behind it: a mid grey that fades back to navy
 const Color _taglineInk = Color(0xFF5A6A8C); // tagline words
-const Color _taglinePlus = Color(0x8C5A6A8C); // the plus signs: the same colour at 55%
+const Color _taglinePlus = Color(
+  0x8C5A6A8C,
+); // the plus signs: the same colour at 55%
 const Color _cloud = Color(0xFFEEF1F6); // background
 const Color _cloudHi = Color(0xFFF9FAFD); // a touch brighter in the middle
 const Color _cloudLo = Color(0xFFE6EAF2); // a touch deeper at the corners
 
 // ----- timing, on the motion's own clock (in seconds) -----
 const double _motionLength = 4.20;
-const double _firstStroke = 0.85; // when the c starts drawing (calm pause after app opens)
-const double _perLetter = 0.17; // delay from one letter to the next (smoother, more visible drawing)
+const double _firstStroke =
+    0.85; // when the c starts drawing (calm pause after app opens)
+const double _perLetter =
+    0.17; // delay from one letter to the next (smoother, more visible drawing)
 const double _strokeTime = 0.60; // how long one stroke takes to draw
-const double _echoLag = 0.08; // delay between the pale copy, the mid copy and the navy stroke
+const double _echoLag =
+    0.08; // delay between the pale copy, the mid copy and the navy stroke
 const double _sweepStart = 2.60; // the scan line enters at the e
 const double _sweepEnd = 3.45; // and leaves past the s
-const double _glideStart = 3.00; // the word glides to its final place while the s is printed
+const double _glideStart =
+    3.00; // the word glides to its final place while the s is printed
 const double _glideEnd = 3.48;
 const double _taglineStart = 3.45;
 const double _taglineEnd = 3.95;
 
 // ----- sizes, in design units (the design is 390 wide; the widget scales to fit the screen) -----
 const double _designWidth = 390;
-const double _typeHeightScale = 0.91; // balanced typography height scale (not too tall, not shrinked)
+const double _typeHeightScale =
+    0.91; // balanced typography height scale (not too tall, not shrinked)
 const double _slit = 7; // width of the scan line
 const double _wake = 84; // length of the wake behind it
-const double _taglineDrop = 56; // tagline baseline, measured down from the middle of the letters
+const double _taglineDrop =
+    56; // tagline baseline, measured down from the middle of the letters
 const double _taglineRise = 6; // how far the tagline rises as it fades in
 
 /// The scanine splash. It plays once, then calls [onFinished].
@@ -131,7 +146,8 @@ class ScanineSplash extends StatefulWidget {
   State<ScanineSplash> createState() => _ScanineSplashState();
 }
 
-class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProviderStateMixin {
+class _ScanineSplashState extends State<ScanineSplash>
+    with SingleTickerProviderStateMixin {
   final _Wordmark _wordmark = _Wordmark();
   late final AnimationController _clock;
   late final double _motion, _hold, _fadeOut; // in seconds
@@ -246,7 +262,15 @@ class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark, // dark status bar icons on the light background
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarContrastEnforced: false,
+      ),
       child: Semantics(
         label: 'scanine. scan, screen, care.',
         textDirection: TextDirection.ltr,
@@ -256,9 +280,7 @@ class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProvider
             fit: StackFit.expand,
             children: [
               // 1. Base cloud background
-              const DecoratedBox(
-                decoration: BoxDecoration(color: _cloud),
-              ),
+              const DecoratedBox(decoration: BoxDecoration(color: _cloud)),
               // 2. Subtle watercolor pattern texture
               if (widget.patternAsset != null)
                 Opacity(
@@ -324,19 +346,25 @@ class _SplashPainter extends CustomPainter {
 
     _paintBackground(canvas, size);
 
-    final double opacity = 1 - _inOutSine(_seg(seconds, motion + hold, motion + hold + fadeOut));
+    final double opacity =
+        1 - _inOutSine(_seg(seconds, motion + hold, motion + hold + fadeOut));
     if (opacity <= 0) {
       return;
     }
 
     // From here on the canvas is in design units, with the origin at the centre of the screen
     // and the middle of the letters on y = 0.
-    final double scale = (size.shortestSide / _designWidth).clamp(0.85, 1.5).toDouble();
+    final double scale = (size.shortestSide / _designWidth)
+        .clamp(0.85, 1.5)
+        .toDouble();
     canvas.save();
     canvas.translate(size.width / 2, size.height / 2);
     canvas.scale(scale);
     if (opacity < 1) {
-      canvas.saveLayer(_sceneBounds, Paint()..color = Color.fromRGBO(0, 0, 0, opacity));
+      canvas.saveLayer(
+        _sceneBounds,
+        Paint()..color = Color.fromRGBO(0, 0, 0, opacity),
+      );
     }
     _paintWordmark(canvas, m);
     _paintTagline(canvas, m);
@@ -377,11 +405,19 @@ class _SplashPainter extends CustomPainter {
   void _paintWordmark(Canvas canvas, double m) {
     final _Wordmark w = wordmark;
     // Where the scan line is, in design units. It travels from the right edge of the e to the left edge of the s.
-    final double scanX = _lerp(w.scanFrom, w.scanTo, _settle.transform(_seg(m, _sweepStart, _sweepEnd)));
+    final double scanX = _lerp(
+      w.scanFrom,
+      w.scanTo,
+      _settle.transform(_seg(m, _sweepStart, _sweepEnd)),
+    );
     // It fades in as it enters and out as it leaves.
-    final double on = _seg(m, _sweepStart, _sweepStart + 0.08) * (1 - _seg(m, _sweepEnd - 0.10, _sweepEnd));
+    final double on =
+        _seg(m, _sweepStart, _sweepStart + 0.08) *
+        (1 - _seg(m, _sweepEnd - 0.10, _sweepEnd));
     // Left edge of the word. "canine" starts centred by itself and glides right as the s is printed.
-    final double wordX = w.restX - w.shift * (1 - _settle.transform(_seg(m, _glideStart, _glideEnd)));
+    final double wordX =
+        w.restX -
+        w.shift * (1 - _settle.transform(_seg(m, _glideStart, _glideEnd)));
     // The scan line's position measured from the word's own left edge.
     final double cut = scanX - wordX;
 
@@ -394,7 +430,12 @@ class _SplashPainter extends CustomPainter {
       _paintThroughBand(
         canvas,
         cut,
-        Rect.fromLTRB(cut + _slit - 2, _Wordmark.top, cut + _slit - 2 + _wake, _Wordmark.bottom),
+        Rect.fromLTRB(
+          cut + _slit - 2,
+          _Wordmark.top,
+          cut + _slit - 2 + _wake,
+          _Wordmark.bottom,
+        ),
         _scanWake,
         <double>[0.85 * on, 0],
         const <double>[0, 1],
@@ -403,7 +444,12 @@ class _SplashPainter extends CustomPainter {
       _paintThroughBand(
         canvas,
         cut,
-        Rect.fromLTRB(cut - 1, _Wordmark.top, cut - 1 + _slit, _Wordmark.bottom),
+        Rect.fromLTRB(
+          cut - 1,
+          _Wordmark.top,
+          cut - 1 + _slit,
+          _Wordmark.bottom,
+        ),
         _scanLine,
         <double>[0, on, on, 0],
         const <double>[0, 0.35, 0.65, 1],
@@ -448,10 +494,18 @@ class _SplashPainter extends CustomPainter {
     if (a <= 0) {
       return;
     }
-    final double ascent = tagline.computeDistanceToActualBaseline(TextBaseline.alphabetic);
-    final Offset at = Offset(-tagline.width / 2, _taglineDrop + (1 - a) * _taglineRise - ascent);
+    final double ascent = tagline.computeDistanceToActualBaseline(
+      TextBaseline.alphabetic,
+    );
+    final Offset at = Offset(
+      -tagline.width / 2,
+      _taglineDrop + (1 - a) * _taglineRise - ascent,
+    );
     if (a < 1) {
-      canvas.saveLayer((at & tagline.size).inflate(4), Paint()..color = Color.fromRGBO(0, 0, 0, a));
+      canvas.saveLayer(
+        (at & tagline.size).inflate(4),
+        Paint()..color = Color.fromRGBO(0, 0, 0, a),
+      );
     }
     tagline.paint(canvas, at);
     if (a < 1) {
@@ -472,7 +526,8 @@ class _SplashPainter extends CustomPainter {
 
 /// One pen stroke of a letter, and when it is drawn.
 class _Stroke {
-  _Stroke(this.path, this.start, this.duration) : metric = path.computeMetrics().first;
+  _Stroke(this.path, this.start, this.duration)
+    : metric = path.computeMetrics().first;
 
   final Path path;
   final ui.PathMetric metric; // lets a stroke be drawn part of the way
@@ -488,10 +543,12 @@ class _Wordmark {
   }
 
   static const double _xHeight = 38;
-  static const double _bowl = 15; // radius of the round letters, measured to the middle of the stroke
+  static const double _bowl =
+      15; // radius of the round letters, measured to the middle of the stroke
   static const double _middle = -19; // the middle of the letters' height
   static const double _iconSize = 19.0;
-  static const double _dotPop = 0.22; // how long the dot of the i takes to pop in
+  static const double _dotPop =
+      0.22; // how long the dot of the i takes to pop in
 
   /// Where the baseline sits below the middle of the letters.
   static const double baseline = 19;
@@ -532,8 +589,26 @@ class _Wordmark {
       const double rx = 10.5, ry = 7.5;
       final double cx = x + 4 + rx;
       final Path path = Path()
-        ..arcTo(Rect.fromCenter(center: Offset(cx, -26.5), width: 2 * rx, height: 2 * ry), _deg(-28), _deg(-242), true)
-        ..arcTo(Rect.fromCenter(center: Offset(cx, -11.5), width: 2 * rx, height: 2 * ry), _deg(-90), _deg(242), false);
+        ..arcTo(
+          Rect.fromCenter(
+            center: Offset(cx, -26.5),
+            width: 2 * rx,
+            height: 2 * ry,
+          ),
+          _deg(-28),
+          _deg(-242),
+          true,
+        )
+        ..arcTo(
+          Rect.fromCenter(
+            center: Offset(cx, -11.5),
+            width: 2 * rx,
+            height: 2 * ry,
+          ),
+          _deg(-90),
+          _deg(242),
+          false,
+        );
       _letters.add(<_Stroke>[_Stroke(path, -9, _strokeTime * 1.1)]);
       _sRight = 2 * rx + 8;
       x += _sRight + 4;
@@ -544,7 +619,12 @@ class _Wordmark {
     {
       final double cx = x + 4 + _bowl;
       final Path path = Path()
-        ..arcTo(Rect.fromCircle(center: Offset(cx, _middle), radius: _bowl), _deg(-42), _deg(-276), true);
+        ..arcTo(
+          Rect.fromCircle(center: Offset(cx, _middle), radius: _bowl),
+          _deg(-42),
+          _deg(-276),
+          true,
+        );
       _letters.add(<_Stroke>[_Stroke(path, startOf(1), _strokeTime)]);
       x += 4 + _bowl + _bowl * math.cos(_deg(42)) + 2.7 + 3;
     }
@@ -552,7 +632,10 @@ class _Wordmark {
     // a: the stem rises, then the bowl swings round from it
     {
       final double cx = x + 4 + _bowl;
-      final Rect circle = Rect.fromCircle(center: Offset(cx, _middle), radius: _bowl);
+      final Rect circle = Rect.fromCircle(
+        center: Offset(cx, _middle),
+        radius: _bowl,
+      );
       final Path bowl = Path()
         ..arcTo(circle, 0, -math.pi, true)
         ..arcTo(circle, -math.pi, -math.pi, false);
@@ -583,7 +666,12 @@ class _Wordmark {
       final Path path = Path()
         ..moveTo(cx - _bowl, _middle)
         ..lineTo(cx + _bowl, _middle)
-        ..arcTo(Rect.fromCircle(center: Offset(cx, _middle), radius: _bowl), 0, _deg(-320), false);
+        ..arcTo(
+          Rect.fromCircle(center: Offset(cx, _middle), radius: _bowl),
+          0,
+          _deg(-320),
+          false,
+        );
       _letters.add(<_Stroke>[_Stroke(path, startOf(6), _strokeTime * 1.1)]);
       x += 2 * _bowl + 8;
     }
@@ -609,9 +697,17 @@ class _Wordmark {
     const double arch = 10.5; // radius of the arch
     final double sx = x + 4;
     final Path path = Path()
-      ..arcTo(Rect.fromCircle(center: Offset(sx + arch, -23.5), radius: arch), math.pi, math.pi, true)
+      ..arcTo(
+        Rect.fromCircle(center: Offset(sx + arch, -23.5), radius: arch),
+        math.pi,
+        math.pi,
+        true,
+      )
       ..lineTo(sx + 2 * arch, 0);
-    return <_Stroke>[_stem(sx, start), _Stroke(path, start + 0.10, _strokeTime)];
+    return <_Stroke>[
+      _stem(sx, start),
+      _Stroke(path, start + 0.10, _strokeTime),
+    ];
   }
 
   /// The wordmark at moment [m]: each stroke arrives as a pale copy, then a mid copy, then navy.
@@ -625,8 +721,18 @@ class _Wordmark {
         final double navyFrom = s.start + 2 * _echoLag;
         final double navy = _draw(_seg(m, navyFrom, navyFrom + s.duration));
         if (navy < 1) {
-          _trace(canvas, s, _draw(_seg(m, s.start, s.start + s.duration)), _lead1);
-          _trace(canvas, s, _draw(_seg(m, s.start + _echoLag, s.start + _echoLag + s.duration)), _lead2);
+          _trace(
+            canvas,
+            s,
+            _draw(_seg(m, s.start, s.start + s.duration)),
+            _lead1,
+          );
+          _trace(
+            canvas,
+            s,
+            _draw(_seg(m, s.start + _echoLag, s.start + _echoLag + s.duration)),
+            _lead2,
+          );
         }
         _trace(canvas, s, navy, _ink);
       }
@@ -743,7 +849,9 @@ class _Wordmark {
     if (progress <= 0.001) {
       return;
     }
-    final Path path = progress >= 1 ? s.path : s.metric.extractPath(0, s.metric.length * progress);
+    final Path path = progress >= 1
+        ? s.path
+        : s.metric.extractPath(0, s.metric.length * progress);
     canvas.drawPath(path, _pen..color = color);
   }
 }

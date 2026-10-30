@@ -101,10 +101,7 @@ class _UploadScreenState extends State<UploadScreen> {
                         ),
                       ),
                     ),
-                    const ScanineWordmark(
-                      fontSize: 22,
-                      color: navy,
-                    ),
+                    const ScanineMark(size: 32),
                     const SizedBox(width: 44), // Balancer
                   ],
                 ),
@@ -139,20 +136,17 @@ class _UploadScreenState extends State<UploadScreen> {
                 // ── Content Card ──────────────────────────────────
                 Expanded(
                   child: hasPhoto
-                      ? _PreviewCard(
-                          path: _path!,
-                          onChangePhoto: _pick,
-                        )
-                      : _UploadDropzoneCard(
-                          onTap: _pick,
-                        ),
+                      ? _PreviewCard(path: _path!, onChangePhoto: _pick)
+                      : _UploadDropzoneCard(onTap: _pick),
                 ),
 
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF9EBEF),
                       borderRadius: BorderRadius.circular(12),
@@ -288,10 +282,7 @@ class _UploadDropzoneCard extends StatelessWidget {
 }
 
 class _PreviewCard extends StatelessWidget {
-  const _PreviewCard({
-    required this.path,
-    required this.onChangePhoto,
-  });
+  const _PreviewCard({required this.path, required this.onChangePhoto});
 
   final String path;
   final VoidCallback onChangePhoto;
@@ -332,11 +323,7 @@ class _PreviewCard extends StatelessWidget {
             children: [
               const Row(
                 children: [
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: navy,
-                    size: 18,
-                  ),
+                  Icon(Icons.check_circle_rounded, color: navy, size: 18),
                   SizedBox(width: 6),
                   Text(
                     'Photo loaded',
@@ -360,9 +347,7 @@ class _PreviewCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                style: TextButton.styleFrom(
-                  foregroundColor: navy,
-                ),
+                style: TextButton.styleFrom(foregroundColor: navy),
               ),
             ],
           ),

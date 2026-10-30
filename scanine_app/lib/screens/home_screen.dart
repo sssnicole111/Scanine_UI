@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../theme/routes.dart';
+import '../widgets/scanine_mark.dart';
 import 'camera_screen.dart';
 
 /// Primary HomeScreen wrapper that provides default navigation callbacks
 /// to [ScanineHomeScreen].
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({
-    super.key,
-    this.onStartScreening,
-    this.onHowItWorks,
-  });
+  const HomeScreen({super.key, this.onStartScreening, this.onHowItWorks});
 
   final VoidCallback? onStartScreening;
   final VoidCallback? onHowItWorks;
@@ -70,29 +68,25 @@ class HomeScreen extends StatelessWidget {
                 _HowStepItem(
                   icon: Icons.burst_mode_rounded,
                   title: '5-Frame Rapid Burst',
-                  description:
-                      'Tap once to automatically capture 5 sequential frames, capturing clean angles even with moving pets.',
+                  description: 'Tap once to automatically capture 5 sequential frames, capturing clean angles even with moving pets.',
                 ),
                 const SizedBox(height: 16),
                 _HowStepItem(
                   icon: Icons.check_circle_outline_rounded,
                   title: 'Real-Time Quality Gating',
-                  description:
-                      'Every frame is checked on-device for blur and optimal illumination before acceptance.',
+                  description: 'Every frame is checked on-device for blur and optimal illumination before acceptance.',
                 ),
                 const SizedBox(height: 16),
                 _HowStepItem(
                   icon: Icons.auto_awesome_rounded,
                   title: 'On-Device AI Ensemble',
-                  description:
-                      'Multiple neural network predictions are averaged with confidence scoring and Grad-CAM attention maps.',
+                  description: 'Multiple neural network predictions are averaged with confidence scoring and Grad-CAM attention maps.',
                 ),
                 const SizedBox(height: 16),
                 _HowStepItem(
                   icon: Icons.local_hospital_outlined,
                   title: 'Direct Veterinary Referral',
-                  description:
-                      'Instantly view nearby licensed veterinary clinics, call with one tap, or get driving directions.',
+                  description: 'Instantly view nearby licensed veterinary clinics, call with one tap, or get driving directions.',
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -158,11 +152,7 @@ class _HowStepItem extends StatelessWidget {
             color: const Color(0xFFD2E3F1).withAlpha(120),
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: ScanineHomeScreen.navy,
-          ),
+          child: Icon(icon, size: 20, color: ScanineHomeScreen.navy),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -216,9 +206,10 @@ class ScanineHomeScreen extends StatelessWidget {
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: background,
-        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
         systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
+        systemNavigationBarIconBrightness: Brightness.dark,
       ),
       child: Scaffold(
         backgroundColor: background,
@@ -228,9 +219,7 @@ class ScanineHomeScreen extends StatelessWidget {
             Positioned.fill(
               child: IgnorePointer(
                 child: ExcludeSemantics(
-                  child: CustomPaint(
-                    painter: _DogSilhouettePainter(),
-                  ),
+                  child: CustomPaint(painter: _DogSilhouettePainter()),
                 ),
               ),
             ),
@@ -254,12 +243,7 @@ class ScanineHomeScreen extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Image.asset(
-                              'assets/icon/icon.png',
-                              height: 32,
-                              width: 32,
-                              fit: BoxFit.contain,
-                            ),
+                            const ScanineMark(size: 32),
                             TextButton(
                               onPressed: onHowItWorks,
                               style: TextButton.styleFrom(
@@ -272,10 +256,7 @@ class ScanineHomeScreen extends StatelessWidget {
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
-                                    Icons.help_outline_rounded,
-                                    size: 19,
-                                  ),
+                                  Icon(Icons.help_outline_rounded, size: 19),
                                   SizedBox(width: 6),
                                   Text(
                                     'How it works',
@@ -324,13 +305,12 @@ class ScanineHomeScreen extends StatelessWidget {
 
                         const Spacer(),
 
-                        _ScreeningButton(
-                          onPressed: onStartScreening,
-                        ),
+                        _ScreeningButton(onPressed: onStartScreening),
 
                         // Sit above the nav bar — add the bottom inset
                         SizedBox(
-                          height: bottomSpace +
+                          height:
+                              bottomSpace +
                               MediaQuery.of(context).padding.bottom,
                         ),
                       ],
@@ -362,10 +342,7 @@ class _ScreeningButton extends StatelessWidget {
         child: SizedBox(
           height: 64,
           child: Padding(
-            padding: const EdgeInsets.only(
-              left: 24,
-              right: 8,
-            ),
+            padding: const EdgeInsets.only(left: 24, right: 8),
             child: Row(
               children: [
                 const Expanded(
@@ -447,15 +424,9 @@ class _DogSilhouettePainter extends CustomPainter {
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFD2E3F1),
-            Color(0xFFE0EDF6),
-            Color(0xFFF5FAFC),
-          ],
+          colors: [Color(0xFFD2E3F1), Color(0xFFE0EDF6), Color(0xFFF5FAFC)],
           stops: [0, 0.65, 1],
-        ).createShader(
-          const Rect.fromLTWH(75, 340, 335, 410),
-        ),
+        ).createShader(const Rect.fromLTWH(75, 340, 335, 410)),
     );
 
     // Lighter ear adds depth without facial details.
@@ -468,10 +439,7 @@ class _DogSilhouettePainter extends CustomPainter {
       ..cubicTo(215, 439, 247, 401, 231, 357)
       ..close();
 
-    canvas.drawPath(
-      ear,
-      Paint()..color = const Color(0xFFE0EDF6),
-    );
+    canvas.drawPath(ear, Paint()..color = const Color(0xFFE0EDF6));
 
     canvas.restore();
   }

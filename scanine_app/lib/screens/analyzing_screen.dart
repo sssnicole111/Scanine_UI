@@ -615,7 +615,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   }
 
   String _headerText() {
-    if (_useTta) return 'SINGLE PHOTO';
+    if (_useTta) return 'ANALYZED 1 / 1';
     return 'ANALYZED $_framesDone / ${widget.imagePaths.length}';
   }
 
@@ -627,7 +627,8 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: _cloudBg,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
         systemNavigationBarIconBrightness: Brightness.dark,
         systemNavigationBarDividerColor: Colors.transparent,
       ),
@@ -678,7 +679,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        CaptureProgressBar(currentIndex: n, totalFrames: n),
+        CaptureProgressBar(currentIndex: _useTta ? 1 : _framesDone, totalFrames: _useTta ? 1 : n),
         Text(
           _headerText(),
           style: const TextStyle(
@@ -805,7 +806,9 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       label: _thumbSemantics(),
       excludeSemantics: true,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: widget.imagePaths.length == 1
+            ? MainAxisAlignment.center
+            : MainAxisAlignment.spaceBetween,
         children: List.generate(widget.imagePaths.length, (i) {
           final img = i < _thumbs.length ? _thumbs[i] : null;
           final result = i < _thumbResults.length ? _thumbResults[i] : null;
