@@ -609,15 +609,19 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
   String _agreementText() {
     final v = _vote;
     if (v == null) return 'Finalizing screening summary…';
-    final unit = _useTta ? 'views' : 'frames';
-    final base = '${v.agree} of ${v.total} $unit agree';
+    // An upload is one frame; its augmented views are internal, so don't
+    // count them in front of the user.
+    if (_useTta) return '1 photo analyzed';
+    final base = '${v.agree} of ${v.total} frames agree';
     return v.agree == v.total ? base : '$base · mixed results';
   }
 
-  String _headerText() {
-    if (_useTta) return 'ANALYZED 1 / 1';
-    return 'ANALYZED $_framesDone / ${widget.imagePaths.length}';
-  }
+  /// Frames actually classified so far (an upload counts as one frame).
+  int get _doneCount =>
+      _useTta ? (_thumbResults.first != null ? 1 : 0) : _framesDone;
+
+  String _headerText() =>
+      'ANALYZED $_doneCount / ${widget.imagePaths.length}';
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -679,7 +683,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        CaptureProgressBar(currentIndex: _useTta ? 1 : _framesDone, totalFrames: _useTta ? 1 : n),
+        CaptureProgressBar(currentIndex: _doneCount, totalFrames: n),
         Text(
           _headerText(),
           style: const TextStyle(

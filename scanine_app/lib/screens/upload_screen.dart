@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'analyzing_screen.dart';
+import 'crop_screen.dart';
 import '../theme/routes.dart';
 import '../widgets/scanine_mark.dart';
 
@@ -17,7 +18,8 @@ class UploadScreen extends StatefulWidget {
 
 class _UploadScreenState extends State<UploadScreen> {
   final _picker = ImagePicker();
-  String? _path;
+  String? _path; // cropped photo that gets analyzed
+  String? _originalPath; // as picked, so "Adjust" can re-crop from scratch
   String? _error;
 
   static const navy = Color(0xFF073858);
@@ -33,11 +35,24 @@ class _UploadScreenState extends State<UploadScreen> {
       );
       if (shot == null) return; // user cancelled
       if (!mounted) return;
-      setState(() => _path = shot.path);
+      await _crop(shot.path);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = "Couldn't access gallery. Please try again.");
     }
+  }
+
+  /// Opens the crop step; backing out keeps the previous selection.
+  Future<void> _crop(String original) async {
+    final cropped = await AppRoutes.push<String>(
+      context,
+      (_) => CropScreen(path: original),
+    );
+    if (cropped == null || !mounted) return;
+    setState(() {
+      _originalPath = original;
+      _path = cropped;
+    });
   }
 
   void _analyze() {
@@ -136,7 +151,11 @@ class _UploadScreenState extends State<UploadScreen> {
                 // ── Content Card ──────────────────────────────────
                 Expanded(
                   child: hasPhoto
-                      ? _PreviewCard(path: _path!, onChangePhoto: _pick)
+                      ? _PreviewCard(
+                          path: _path!,
+                          onChangePhoto: _pick,
+                          onAdjust: () => _crop(_originalPath!),
+                        )
                       : _UploadDropzoneCard(onTap: _pick),
                 ),
 
@@ -282,10 +301,15 @@ class _UploadDropzoneCard extends StatelessWidget {
 }
 
 class _PreviewCard extends StatelessWidget {
-  const _PreviewCard({required this.path, required this.onChangePhoto});
+  const _PreviewCard({
+    required this.path,
+    required this.onChangePhoto,
+    required this.onAdjust,
+  });
 
   final String path;
   final VoidCallback onChangePhoto;
+  final VoidCallback onAdjust;
 
   static const navy = Color(0xFF073858);
 
@@ -307,52 +331,56 @@ class _PreviewCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
+          // The crop is square, so show it square rather than re-cropping it.
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.file(
-                File(path),
-                width: double.infinity,
-                fit: BoxFit.cover,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.file(File(path), fit: BoxFit.cover),
+                ),
               ),
             ),
           ),
           const SizedBox(height: 12),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.check_circle_rounded, color: navy, size: 18),
-                  SizedBox(width: 6),
-                  Text(
-                    'Photo loaded',
-                    style: TextStyle(
-                      fontFamily: 'InstrumentSans',
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: navy,
-                    ),
-                  ),
-                ],
-              ),
-              TextButton.icon(
-                onPressed: onChangePhoto,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text(
-                  'Change',
+              const Icon(Icons.check_circle_rounded, color: navy, size: 18),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Ready',
                   style: TextStyle(
                     fontFamily: 'InstrumentSans',
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
+                    color: navy,
                   ),
                 ),
-                style: TextButton.styleFrom(foregroundColor: navy),
               ),
+              _action(Icons.crop_rounded, 'Adjust', onAdjust),
+              _action(Icons.refresh_rounded, 'Change', onChangePhoto),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _action(IconData icon, String label, VoidCallback onTap) {
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 16),
+      label: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: 'InstrumentSans',
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      style: TextButton.styleFrom(foregroundColor: navy),
     );
   }
 }

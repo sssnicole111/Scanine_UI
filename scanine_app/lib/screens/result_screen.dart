@@ -493,23 +493,12 @@ class _HeroComparisonSlider extends StatelessWidget {
               // Layer 1: Raw photo (bottom base layer)
               _buildRawLayer(),
 
-              // Inconclusive blur scrim — gradient so the bottom fade is always smooth
+              // Inconclusive: one even scrim over the blurred photo. The only
+              // gradient left is the shared bottom fade into the page.
               if (result.inconclusive)
                 IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.40),
-                          Colors.black.withValues(alpha: 0.32),
-                          Colors.black.withValues(alpha: 0.0),
-                        ],
-                        stops: const [0.0, 0.55, 1.0],
-                      ),
-                    ),
-                    child: const SizedBox.expand(),
+                  child: ColoredBox(
+                    color: const Color(0xFF14243B).withValues(alpha: 0.35),
                   ),
                 ),
 
@@ -660,22 +649,16 @@ class _HeroComparisonSlider extends StatelessWidget {
                 ),
               ],
 
-              // Inconclusive scan message
+              // No heatmap: a centred pill on the photo, clear of the light
+              // bottom fade so the white text stays readable.
               if (!_showHeatmap)
                 const Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 84,
-                  child: Center(
-                    child: Text(
-                      'Heatmap not available for this scan',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        fontFamily: 'InstrumentSans',
-                      ),
-                    ),
+                  left: 24,
+                  right: 24,
+                  top: 0,
+                  bottom: 40,
+                  child: IgnorePointer(
+                    child: Center(child: _HeatmapUnavailablePill()),
                   ),
                 ),
 
@@ -758,9 +741,17 @@ class _HeroComparisonSlider extends StatelessWidget {
     }
 
     if (result.inconclusive) {
-      return ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: imageWidget,
+      // Clamp the blur at the edges; the default lets it fade to transparent,
+      // which showed the page colour as a halo around the photo.
+      return ClipRect(
+        child: ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(
+            sigmaX: 10,
+            sigmaY: 10,
+            tileMode: TileMode.clamp,
+          ),
+          child: imageWidget,
+        ),
       );
     }
 
@@ -794,6 +785,40 @@ class _HeroComparisonSlider extends StatelessWidget {
           ],
           stops: [0.0, 0.14, 0.30, 0.44, 0.58, 0.80],
         ),
+      ),
+    );
+  }
+}
+
+/// Shown in place of the heatmap slider when there is no heatmap to compare.
+class _HeatmapUnavailablePill extends StatelessWidget {
+  const _HeatmapUnavailablePill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.visibility_off_outlined, color: Colors.white, size: 16),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Heatmap not available for this scan',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'InstrumentSans',
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1353,6 +1378,12 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
                 ),
               ),
             ),
+
+            if (!hasHeat)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: _HeatmapUnavailablePill(),
+              ),
 
             // Bottom tip
             if (hasHeat && _showComparison)
