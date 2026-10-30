@@ -23,7 +23,7 @@ class _UploadScreenState extends State<UploadScreen> {
   String? _path; // cropped photo that gets analyzed
   String? _originalPath; // as picked, so "Adjust" can re-crop from scratch
   String? _error;
-  String? _issue; // quality or dog-check problem with the selected photo
+  _UploadIssue? _issue; // quality or dog-check problem with the selected photo
   bool _checking = false;
 
   static const navy = Color(0xFF073858);
@@ -76,12 +76,7 @@ class _UploadScreenState extends State<UploadScreen> {
     if (!mounted) return;
     setState(() {
       _checking = false;
-      if (s.isNotDog) {
-        _issue = "We couldn't find a dog in this photo. "
-            "Choose a photo of your dog's skin.";
-      } else if (!q.isAcceptable && q.focus != FocusStatus.checking) {
-        _issue = q.feedbackMessage;
-      }
+      _issue = s.isNotDog ? _UploadIssue.noDog : _UploadIssue.fromQuality(q);
     });
     if (_issue == null) _proceed();
   }
@@ -221,54 +216,7 @@ class _UploadScreenState extends State<UploadScreen> {
 
                 if (_issue != null) ...[
                   const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF9EBEF),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 1),
-                              child: Icon(Icons.info_outline,
-                                  color: maroon, size: 18),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _issue!,
-                                style: const TextStyle(
-                                  fontFamily: 'InstrumentSans',
-                                  fontSize: 13,
-                                  color: maroon,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: _proceed,
-                            style: TextButton.styleFrom(foregroundColor: maroon),
-                            child: const Text(
-                              'Analyze anyway',
-                              style: TextStyle(
-                                fontFamily: 'InstrumentSans',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _IssueBanner(issue: _issue!, onAnalyzeAnyway: _proceed),
                 ],
 
                 const SizedBox(height: 16),
@@ -279,7 +227,9 @@ class _UploadScreenState extends State<UploadScreen> {
                     width: double.infinity,
                     height: 60,
                     child: ElevatedButton(
-                      onPressed: _analyze,
+                      // With a warning showing, rechecking gives the same
+                      // answer, so the main action becomes picking again.
+                      onPressed: _issue != null ? _pick : _analyze,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: navy,
                         foregroundColor: Colors.white,
@@ -297,9 +247,11 @@ class _UploadScreenState extends State<UploadScreen> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text(
-                              'Start screening',
-                              style: TextStyle(
+                          : Text(
+                              _issue != null
+                                  ? 'Choose another photo'
+                                  : 'Start screening',
+                              style: const TextStyle(
                                 fontFamily: 'InstrumentSans',
                                 fontSize: 16.5,
                                 fontWeight: FontWeight.w600,
@@ -316,6 +268,117 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A problem found with an uploaded photo, worded for uploads (the camera's
+/// "hold steady" hints don't apply to a photo that's already taken).
+class _UploadIssue {
+  const _UploadIssue(this.icon, this.title, this.body);
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  static const noDog = _UploadIssue(
+    Icons.pets_outlined,
+    "We couldn't find a dog",
+    "Choose a close-up of your dog's skin.",
+  );
+
+  static _UploadIssue? fromQuality(QualityAssessment q) {
+    if (q.focus == FocusStatus.checking) return null; // couldn't assess
+    if (q.focus == FocusStatus.blurry) {
+      return const _UploadIssue(Icons.blur_on_rounded, 'This photo looks blurry',
+          'A sharper photo gives a more reliable result.');
+    }
+    switch (q.light) {
+      case LightStatus.tooDark:
+      case LightStatus.lowLight:
+        return const _UploadIssue(Icons.wb_twilight_rounded, 'This photo is too dark',
+            'A photo taken in brighter light gives a more reliable result.');
+      case LightStatus.tooBright:
+        return const _UploadIssue(Icons.wb_sunny_outlined, 'This photo is too bright',
+            'A photo without glare gives a more reliable result.');
+      case LightStatus.adequate:
+      case LightStatus.checking:
+        return null;
+    }
+  }
+}
+
+class _IssueBanner extends StatelessWidget {
+  const _IssueBanner({required this.issue, required this.onAnalyzeAnyway});
+
+  final _UploadIssue issue;
+  final VoidCallback onAnalyzeAnyway;
+
+  static const _bg = Color(0xFFFFF4E0);
+  static const _ink = Color(0xFF7A4B00);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(issue.icon, color: _ink, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  issue.title,
+                  style: const TextStyle(
+                    fontFamily: 'InstrumentSans',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _ink,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  issue.body,
+                  style: const TextStyle(
+                    fontFamily: 'InstrumentSans',
+                    fontSize: 13,
+                    height: 1.3,
+                    color: _ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: onAnalyzeAnyway,
+            style: TextButton.styleFrom(
+              foregroundColor: _ink,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(48, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'Use anyway',
+              style: TextStyle(
+                fontFamily: 'InstrumentSans',
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.underline,
+                decorationColor: _ink,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
