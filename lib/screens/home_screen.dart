@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/routes.dart';
+import '../widgets/scanine_logo.dart';
 import 'camera_screen.dart';
 
 /// Primary HomeScreen wrapper that provides default navigation callbacks
@@ -211,10 +213,20 @@ class ScanineHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
-      body: SafeArea(
-        child: LayoutBuilder(
+    // Edge-to-edge: respect top status bar and bottom nav bar insets.
+    final topPad = MediaQuery.viewPaddingOf(context).top;
+    final bottomPad = MediaQuery.viewPaddingOf(context).bottom;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: background,
+        body: LayoutBuilder(
           builder: (context, constraints) {
             final height = constraints.maxHeight;
             final compact = height < 650;
@@ -233,23 +245,33 @@ class ScanineHomeScreen extends StatelessWidget {
                 ),
 
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: EdgeInsets.fromLTRB(24, topPad + 16, 24, bottomPad + 28),
                   child: Column(
                     children: [
-                      const SizedBox(height: 16),
-
+                      // ── Top row: logo mark + wordmark on the left, help on the right ──
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'scanine',
-                            style: TextStyle(
-                              fontFamily: 'InstrumentSans',
-                              fontSize: 29,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -1.3,
-                              color: navy,
-                            ),
+                          Row(
+                            children: [
+                              // Brand mark without background (transparent)
+                              const ScanineLogoMark(
+                                size: 30,
+                                navyColor: navy,
+                                grayColor: Color(0xFF9BB5C8),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'scanine',
+                                style: TextStyle(
+                                  fontFamily: 'InstrumentSans',
+                                  fontSize: 29,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -1.3,
+                                  color: navy,
+                                ),
+                              ),
+                            ],
                           ),
                           TextButton(
                             onPressed: onHowItWorks,
@@ -318,8 +340,6 @@ class ScanineHomeScreen extends StatelessWidget {
                       _ScreeningButton(
                         onPressed: onStartScreening,
                       ),
-
-                      const SizedBox(height: 28),
                     ],
                   ),
                 ),

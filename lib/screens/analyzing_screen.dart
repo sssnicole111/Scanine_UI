@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,9 +21,16 @@ enum AnalysisStage {
 }
 
 class AnalyzingScreen extends StatefulWidget {
-  const AnalyzingScreen({super.key, required this.imagePaths});
+  const AnalyzingScreen({
+    super.key,
+    required this.imagePaths,
+    /// Set to true when the source is a single uploaded photo (not a 5-frame
+    /// camera burst) so the UI shows the correct frame count (1).
+    this.isUpload = false,
+  });
 
   final List<String> imagePaths;
+  final bool isUpload;
 
   @override
   State<AnalyzingScreen> createState() => _AnalyzingScreenState();
@@ -216,181 +224,189 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
     const background = Color(0xFFF5FAFC);
     const maroon = Color(0xFF800020);
 
-    final isSinglePhoto = widget.imagePaths.length == 1;
-    final totalFrames = isSinglePhoto ? 5 : widget.imagePaths.length;
+    final topPad = MediaQuery.viewPaddingOf(context).top;
+    final bottomPad = MediaQuery.viewPaddingOf(context).bottom;
+
+    // For uploaded photos show "1 frame"; for camera burst show the actual count.
+    final totalFrames =
+        widget.isUpload ? 1 : widget.imagePaths.length;
+    final headerSubtitle = widget.isUpload
+        ? 'Reading uploaded photo'
+        : 'Reading five frames';
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
       child: Scaffold(
         backgroundColor: background,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 52),
-
-                // ── Processing On-Device Header ───────────────────
-                const Text(
-                  'PROCESSING ON-DEVICE',
-                  style: TextStyle(
-                    fontFamily: 'InstrumentSans',
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    color: navy,
-                  ),
+        body: Padding(
+          padding: EdgeInsets.fromLTRB(28, topPad + 28, 28, bottomPad + 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Processing On-Device Header ───────────────────
+              const Text(
+                'PROCESSING ON-DEVICE',
+                style: TextStyle(
+                  fontFamily: 'InstrumentSans',
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                  color: navy,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  isSinglePhoto ? 'Reading image frames' : 'Reading five frames',
-                  style: const TextStyle(
-                    fontFamily: 'InstrumentSans',
-                    fontSize: 32,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -1.1,
-                    height: 1.1,
-                    color: navy,
-                  ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                headerSubtitle,
+                style: const TextStyle(
+                  fontFamily: 'InstrumentSans',
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -1.1,
+                  height: 1.1,
+                  color: navy,
                 ),
+              ),
 
-                const SizedBox(height: 32),
+              const SizedBox(height: 32),
 
-                // ── Actual Image with Hovering Scan Beam Effect ───
-                Container(
-                  height: 340,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x18142E53),
-                        blurRadius: 26,
-                        offset: Offset(0, 10),
+              // ── Actual Image with Hovering Scan Beam Effect ───
+              Container(
+                height: 340,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(26),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x18142E53),
+                      blurRadius: 26,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(26),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // 1. The actual captured or uploaded photo
+                      _buildActualImage(),
+
+                      // 2. Subtle dark contrast gradient overlay
+                      Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0x2E071A2E),
+                              Color(0x47071A2E),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // 3. Hovering scan laser & illumination curtain
+                      AnimatedBuilder(
+                        animation: _scanController,
+                        builder: (context, child) {
+                          return CustomPaint(
+                            painter: _HoveringScanPainter(
+                              position: _scanPositionAnimation.value,
+                              pulse: _pulseAnimation.value,
+                            ),
+                          );
+                        },
+                      ),
+
+                      // 4. Subtle corner reticles
+                      Positioned.fill(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: CustomPaint(
+                            painter: _CardCornerReticlesPainter(
+                              color: const Color(0xFFDCA052)
+                                  .withValues(alpha: 0.75),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(26),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // 1. The actual captured or uploaded photo
-                        _buildActualImage(),
+                ),
+              ),
 
-                        // 2. Subtle dark contrast gradient overlay
-                        Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Color(0x2E071A2E),
-                                Color(0x47071A2E),
-                              ],
-                            ),
-                          ),
-                        ),
+              const SizedBox(height: 40),
 
-                        // 3. Hovering scan laser & illumination curtain
-                        AnimatedBuilder(
-                          animation: _scanController,
-                          builder: (context, child) {
-                            return CustomPaint(
-                              painter: _HoveringScanPainter(
-                                position: _scanPositionAnimation.value,
-                                pulse: _pulseAnimation.value,
-                              ),
-                            );
-                          },
-                        ),
-
-                        // 4. Subtle corner reticles
-                        Positioned.fill(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: CustomPaint(
-                              painter: _CardCornerReticlesPainter(
-                                color: const Color(0xFFDCA052)
-                                    .withValues(alpha: 0.75),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+              // ── Centered Process Steps (no checks, bold active process) ──
+              if (_error == null) ...[
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _CenteredProcessStep(
+                        title:
+                            'Quality filtering — $totalFrames/$totalFrames passed',
+                        state: _stepState(AnalysisStage.quality),
+                      ),
+                      const SizedBox(height: 16),
+                      _CenteredProcessStep(
+                        title: 'Running multi-class inference',
+                        state: _stepState(AnalysisStage.inference),
+                      ),
+                      const SizedBox(height: 16),
+                      _CenteredProcessStep(
+                        title: 'Generating Grad-CAM heatmap',
+                        state: _stepState(AnalysisStage.heatmap),
+                      ),
+                      const SizedBox(height: 16),
+                      _CenteredProcessStep(
+                        title: 'Retrieving first-response guidance',
+                        state: _stepState(AnalysisStage.guidance),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF9EBEF),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: maroon.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    'Analysis error: $_error',
+                    style: const TextStyle(
+                      fontFamily: 'InstrumentSans',
+                      fontSize: 14,
+                      color: maroon,
+                      height: 1.4,
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 40),
-
-                // ── Centered Process Steps (no checks, bold active process) ──
-                if (_error == null) ...[
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        _CenteredProcessStep(
-                          title:
-                              'Quality filtering — $totalFrames/$totalFrames passed',
-                          state: _stepState(AnalysisStage.quality),
-                        ),
-                        const SizedBox(height: 16),
-                        _CenteredProcessStep(
-                          title: 'Running multi-class inference',
-                          state: _stepState(AnalysisStage.inference),
-                        ),
-                        const SizedBox(height: 16),
-                        _CenteredProcessStep(
-                          title: 'Generating Grad-CAM heatmap',
-                          state: _stepState(AnalysisStage.heatmap),
-                        ),
-                        const SizedBox(height: 16),
-                        _CenteredProcessStep(
-                          title: 'Retrieving first-response guidance',
-                          state: _stepState(AnalysisStage.guidance),
-                        ),
-                      ],
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.of(context).popUntil((r) => r.isFirst),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: navy,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
                     ),
                   ),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF9EBEF),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: maroon.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Text(
-                      'Analysis error: $_error',
-                      style: const TextStyle(
-                        fontFamily: 'InstrumentSans',
-                        fontSize: 14,
-                        color: maroon,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () =>
-                        Navigator.of(context).popUntil((r) => r.isFirst),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: navy,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                    ),
-                    child: const Text('Return Home'),
-                  ),
-                ],
+                  child: const Text('Return Home'),
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),

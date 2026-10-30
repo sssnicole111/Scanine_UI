@@ -7,6 +7,10 @@ import 'theme/tokens.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // Enable edge-to-edge so content draws behind the system bars.
+  // Each screen uses a bottom padding equal to MediaQuery.viewPadding.bottom
+  // so interactive elements are never hidden behind the navigation bar.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   runApp(const ScanineApp());
 }
 

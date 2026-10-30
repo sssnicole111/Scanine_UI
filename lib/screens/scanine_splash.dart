@@ -246,7 +246,13 @@ class _ScanineSplashState extends State<ScanineSplash> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark, // dark status bar icons on the light background
+      // Transparent bars so the splash colour extends edge-to-edge.
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
       child: Semantics(
         label: 'scanine. scan, screen, care.',
         textDirection: TextDirection.ltr,

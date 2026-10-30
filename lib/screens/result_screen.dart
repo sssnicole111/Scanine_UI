@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/screening_result.dart';
 import '../theme/routes.dart';
@@ -21,76 +22,87 @@ class ResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: T.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(timestamp: _timestamp),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s5),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _HeroCard(result: result),
-                    const SizedBox(height: T.s4),
-                    _VoteLine(result: result),
-                    const SizedBox(height: T.s4),
-                    _GuidanceCard(guidance: result.guidance),
-                    const SizedBox(height: T.s4),
-                    const Text(
-                      'Scanine is a triage aid only. Not a veterinary diagnosis.',
-                      style: TextStyle(fontSize: T.tXs, color: T.ink3),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s5),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    if (result.urgency == Urgency.low) {
-                      // "Continue monitoring" — no referral warranted.
-                      Navigator.of(context).popUntil((r) => r.isFirst);
-                    } else {
-                      AppRoutes.push(
-                        context,
-                        (_) => ReferralScreen(result: result),
-                      );
-                    }
-                  },
-                  style: FilledButton.styleFrom(
-                    // Maroon when urgent; "Continue monitoring" uses navy
-                    backgroundColor: switch (result.urgency) {
-                      Urgency.high => T.danger,
-                      Urgency.medium => T.amber,
-                      Urgency.low => T.navy,
-                    },
-                    padding: const EdgeInsets.symmetric(vertical: T.s4),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(T.rFull),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: T.tBase,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+    final bottomPad = MediaQuery.viewPaddingOf(context).bottom;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: T.bg,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              _TopBar(timestamp: _timestamp),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(result.referralText),
-                      const SizedBox(width: T.s2),
-                      const Icon(Icons.arrow_forward, size: 16),
+                      _HeroCard(result: result),
+                      const SizedBox(height: T.s4),
+                      _VoteLine(result: result),
+                      const SizedBox(height: T.s4),
+                      _GuidanceCard(guidance: result.guidance),
+                      const SizedBox(height: T.s4),
+                      const Text(
+                        'Scanine is a triage aid only. Not a veterinary diagnosis.',
+                        style: TextStyle(fontSize: T.tXs, color: T.ink3),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ),
-          ],
+              Padding(
+                padding: EdgeInsets.fromLTRB(T.s5, 0, T.s5, T.s5 + bottomPad),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () {
+                      if (result.urgency == Urgency.low) {
+                        // "Continue monitoring" — no referral warranted.
+                        Navigator.of(context).popUntil((r) => r.isFirst);
+                      } else {
+                        AppRoutes.push(
+                          context,
+                          (_) => ReferralScreen(result: result),
+                        );
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      // Maroon when urgent; "Continue monitoring" uses navy
+                      backgroundColor: switch (result.urgency) {
+                        Urgency.high => T.danger,
+                        Urgency.medium => T.amber,
+                        Urgency.low => T.navy,
+                      },
+                      padding: const EdgeInsets.symmetric(vertical: T.s4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(T.rFull),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: T.tBase,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(result.referralText),
+                        const SizedBox(width: T.s2),
+                        const Icon(Icons.arrow_forward, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -264,6 +276,10 @@ class _PendingSheet extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero card
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _HeroCard extends StatefulWidget {
   const _HeroCard({required this.result});
 
@@ -274,123 +290,176 @@ class _HeroCard extends StatefulWidget {
 }
 
 class _HeroCardState extends State<_HeroCard> {
-  // Land on the heat map by default, not the raw photo
+  // Show heatmap by default when it is available and the result is conclusive.
   bool _showHeatmap = true;
 
   @override
   Widget build(BuildContext context) {
     final result = widget.result;
-    final showingHeatmap = _showHeatmap && result.hasHeatmap;
+
+    // Inconclusive results never have a meaningful heatmap to show.
+    final heatmapAvailable = result.hasHeatmap && !result.inconclusive;
+    final showingHeatmap = _showHeatmap && heatmapAvailable;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ClipRRect(
-      borderRadius: BorderRadius.circular(T.rLg),
-      child: SizedBox(
-        height: 320,
-        width: double.infinity,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (showingHeatmap)
-              Image.memory(result.heatmap!, fit: BoxFit.cover)
-            else if (result.imagePath != null)
-              Image.file(File(result.imagePath!), fit: BoxFit.cover)
-            else
-              Container(
-                decoration: const BoxDecoration(gradient: T.cardGradient),
-              ),
-            // Scrim so the condition text stays legible.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [Color(0xCC000000), Color(0x00000000)],
-                  stops: [0.0, 0.55],
-                ),
-              ),
-            ),
-            if (result.hasHeatmap)
-              Positioned(
-                top: T.s3,
-                left: T.s3,
-                child: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: const Color(0x8A000000),
-                    borderRadius: BorderRadius.circular(T.rFull),
+          borderRadius: BorderRadius.circular(T.rLg),
+          child: SizedBox(
+            height: 320,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // ── Background image ─────────────────────────────
+                if (showingHeatmap)
+                  Image.memory(result.heatmap!, fit: BoxFit.cover)
+                else if (result.imagePath != null)
+                  Image.file(File(result.imagePath!), fit: BoxFit.cover)
+                else
+                  Container(
+                    decoration: const BoxDecoration(gradient: T.cardGradient),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _TogglePill(
-                        label: 'Photo',
-                        active: !showingHeatmap,
-                        onTap: () => setState(() => _showHeatmap = false),
+
+                // ── Scrim so text stays legible ──────────────────
+                // For inconclusive results use a heavier, uniform scrim so
+                // gradient artefacts don't show.
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: result.inconclusive
+                        ? const LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Color(0xDD000000), Color(0x44000000)],
+                            stops: [0.0, 0.7],
+                          )
+                        : const LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Color(0xCC000000), Color(0x00000000)],
+                            stops: [0.0, 0.55],
+                          ),
+                  ),
+                ),
+
+                // ── Photo / Heatmap toggle (only when conclusive) ─
+                if (heatmapAvailable)
+                  Positioned(
+                    top: T.s3,
+                    left: T.s3,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: const Color(0x8A000000),
+                        borderRadius: BorderRadius.circular(T.rFull),
                       ),
-                      _TogglePill(
-                        label: 'Heatmap',
-                        active: showingHeatmap,
-                        onTap: () => setState(() => _showHeatmap = true),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _TogglePill(
+                            label: 'Photo',
+                            active: !showingHeatmap,
+                            onTap: () =>
+                                setState(() => _showHeatmap = false),
+                          ),
+                          _TogglePill(
+                            label: 'Heatmap',
+                            active: showingHeatmap,
+                            onTap: () =>
+                                setState(() => _showHeatmap = true),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // ── "Heatmap not available" badge (inconclusive) ──
+                if (result.inconclusive)
+                  Positioned(
+                    top: T.s3,
+                    left: T.s3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: T.s3, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0x8A000000),
+                        borderRadius: BorderRadius.circular(T.rFull),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.info_outline,
+                              color: Colors.white70, size: 13),
+                          SizedBox(width: 5),
+                          Text(
+                            'Heatmap not available',
+                            style: TextStyle(
+                              fontSize: T.tXs,
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // ── Confidence badge ─────────────────────────────
+                Positioned(
+                  top: T.s3,
+                  right: T.s3,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: T.s3, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xB3000000),
+                      borderRadius: BorderRadius.circular(T.rFull),
+                    ),
+                    child: Text(
+                      '${result.confidencePercent}%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: T.tSm,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Condition label ──────────────────────────────
+                Positioned(
+                  left: T.s5,
+                  right: T.s5,
+                  bottom: T.s5,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        result.condition,
+                        style: const TextStyle(
+                          fontSize: T.tXl,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: -0.32,
+                        ),
+                      ),
+                      Text(
+                        result.conditionLabel,
+                        style: const TextStyle(
+                          fontSize: T.tBase,
+                          color: Color(0xCCFFFFFF),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            Positioned(
-              top: T.s3,
-              right: T.s3,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: T.s3, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xB3000000),
-                  borderRadius: BorderRadius.circular(T.rFull),
-                ),
-                child: Text(
-                  '${result.confidencePercent}%',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: T.tSm,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+              ],
             ),
-            Positioned(
-              left: T.s5,
-              right: T.s5,
-              bottom: T.s5,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    result.condition,
-                    style: const TextStyle(
-                      fontSize: T.tXl,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: -0.32,
-                    ),
-                  ),
-                  Text(
-                    result.conditionLabel,
-                    style: const TextStyle(
-                      fontSize: T.tBase,
-                      color: Color(0xCCFFFFFF),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-    ),
-  ],
-);
+      ],
+    );
   }
 }
 
