@@ -9,6 +9,7 @@ import '../ml/subject_check.dart';
 import 'analyzing_screen.dart';
 import 'crop_screen.dart';
 import '../theme/routes.dart';
+import '../theme/tokens.dart';
 import '../widgets/scanine_mark.dart';
 
 class UploadScreen extends StatefulWidget {
@@ -180,6 +181,7 @@ class _UploadScreenState extends State<UploadScreen> {
                           path: _path!,
                           onChangePhoto: _pick,
                           onAdjust: () => _crop(_originalPath!),
+                          issue: _issue,
                         )
                       : _UploadDropzoneCard(onTap: _pick),
                 ),
@@ -212,11 +214,6 @@ class _UploadScreenState extends State<UploadScreen> {
                       ],
                     ),
                   ),
-                ],
-
-                if (_issue != null) ...[
-                  const SizedBox(height: 12),
-                  _IssueBanner(issue: _issue!, onAnalyzeAnyway: _proceed),
                 ],
 
                 const SizedBox(height: 16),
@@ -260,8 +257,25 @@ class _UploadScreenState extends State<UploadScreen> {
                             ),
                     ),
                   ),
+                  if (_issue != null)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: TextButton(
+                        onPressed: _proceed,
+                        style: TextButton.styleFrom(foregroundColor: T.ink2),
+                        child: const Text(
+                          'Use this photo anyway',
+                          style: TextStyle(
+                            fontFamily: 'InstrumentSans',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   // Pad below button so it sits above the system nav bar
-                  SizedBox(height: bottomInset + 16),
+                  SizedBox(height: bottomInset + (_issue != null ? 4 : 16)),
                 ] else
                   SizedBox(height: bottomInset + 16),
               ],
@@ -274,113 +288,35 @@ class _UploadScreenState extends State<UploadScreen> {
 }
 
 /// A problem found with an uploaded photo, worded for uploads (the camera's
-/// "hold steady" hints don't apply to a photo that's already taken).
+/// "hold steady" hints don't apply to a photo that's already taken). Shown in
+/// the photo card's status line, the way the camera shows quality readouts.
 class _UploadIssue {
-  const _UploadIssue(this.icon, this.title, this.body);
+  const _UploadIssue(this.status, this.hint);
 
-  final IconData icon;
-  final String title;
-  final String body;
+  final String status; // short, replaces "Ready"
+  final String hint; // one line under the status
 
   static const noDog = _UploadIssue(
-    Icons.pets_outlined,
-    "We couldn't find a dog",
-    "Choose a close-up of your dog's skin.",
-  );
+      'No dog found', "Choose a close-up of your dog's skin.");
 
   static _UploadIssue? fromQuality(QualityAssessment q) {
     if (q.focus == FocusStatus.checking) return null; // couldn't assess
     if (q.focus == FocusStatus.blurry) {
-      return const _UploadIssue(Icons.blur_on_rounded, 'This photo looks blurry',
-          'A sharper photo gives a more reliable result.');
+      return const _UploadIssue(
+          'Looks blurry', 'A sharper photo gives a more reliable result.');
     }
     switch (q.light) {
       case LightStatus.tooDark:
       case LightStatus.lowLight:
-        return const _UploadIssue(Icons.wb_twilight_rounded, 'This photo is too dark',
-            'A photo taken in brighter light gives a more reliable result.');
+        return const _UploadIssue(
+            'Too dark', 'Try a photo taken in brighter light.');
       case LightStatus.tooBright:
-        return const _UploadIssue(Icons.wb_sunny_outlined, 'This photo is too bright',
-            'A photo without glare gives a more reliable result.');
+        return const _UploadIssue(
+            'Too bright', 'Try a photo without strong glare.');
       case LightStatus.adequate:
       case LightStatus.checking:
         return null;
     }
-  }
-}
-
-class _IssueBanner extends StatelessWidget {
-  const _IssueBanner({required this.issue, required this.onAnalyzeAnyway});
-
-  final _UploadIssue issue;
-  final VoidCallback onAnalyzeAnyway;
-
-  static const _bg = Color(0xFFFFF4E0);
-  static const _ink = Color(0xFF7A4B00);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: _bg,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(issue.icon, color: _ink, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  issue.title,
-                  style: const TextStyle(
-                    fontFamily: 'InstrumentSans',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: _ink,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  issue.body,
-                  style: const TextStyle(
-                    fontFamily: 'InstrumentSans',
-                    fontSize: 13,
-                    height: 1.3,
-                    color: _ink,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton(
-            onPressed: onAnalyzeAnyway,
-            style: TextButton.styleFrom(
-              foregroundColor: _ink,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: const Size(48, 36),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              'Use anyway',
-              style: TextStyle(
-                fontFamily: 'InstrumentSans',
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                decoration: TextDecoration.underline,
-                decorationColor: _ink,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -458,13 +394,20 @@ class _PreviewCard extends StatelessWidget {
     required this.path,
     required this.onChangePhoto,
     required this.onAdjust,
+    this.issue,
   });
 
   final String path;
   final VoidCallback onChangePhoto;
   final VoidCallback onAdjust;
+  final _UploadIssue? issue;
 
   static const navy = Color(0xFF073858);
+
+  // Same pair the app already uses for "not quite right": the camera's warm
+  // amber readouts and the result screen's "Low confidence" text.
+  static const amber = Color(0xFFD49339);
+  static const amberInk = Color(0xFF8A5A00);
 
   @override
   Widget build(BuildContext context) {
@@ -499,16 +442,24 @@ class _PreviewCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: navy, size: 18),
+              Icon(
+                issue == null
+                    ? Icons.check_circle_rounded
+                    : Icons.error_rounded,
+                color: issue == null ? navy : amber,
+                size: 18,
+              ),
               const SizedBox(width: 6),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Ready',
+                  issue?.status ?? 'Ready',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'InstrumentSans',
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
-                    color: navy,
+                    color: issue == null ? navy : amberInk,
                   ),
                 ),
               ),
@@ -516,6 +467,23 @@ class _PreviewCard extends StatelessWidget {
               _action(Icons.refresh_rounded, 'Change', onChangePhoto),
             ],
           ),
+          if (issue != null)
+            Padding(
+              // Lines up with the status text, past the icon.
+              padding: const EdgeInsets.only(left: 24, right: 8, bottom: 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  issue!.hint,
+                  style: const TextStyle(
+                    fontFamily: 'InstrumentSans',
+                    fontSize: 13,
+                    height: 1.35,
+                    color: T.ink2,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
