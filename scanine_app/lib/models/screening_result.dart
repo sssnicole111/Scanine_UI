@@ -1,81 +1,14 @@
 import 'dart:typed_data';
 
 import '../ml/classifier.dart';
+import 'guidance_data.dart';
 
-// First-response guidance, ported from FIRST_RESPONSE_GUIDANCE in the PWA's
-// CameraScreen.jsx. Keyed by the model's label so every class slots straight
-// in now that the 4-class model has shipped.
+export 'guidance_data.dart' show GuidanceStep, TriageProtocol;
 
+/// Clinical priority for triage and referral routing.
+///
+/// Condition-level priority (static per condition), not patient-specific severity.
 enum Urgency { high, medium, low }
-
-class _Guidance {
-  final String conditionLabel;
-  final Urgency urgency;
-  final String referralText;
-  final List<String> lines;
-  const _Guidance(
-      this.conditionLabel, this.urgency, this.referralText, this.lines);
-}
-
-const _guidance = <String, _Guidance>{
-  'Ringworm': _Guidance(
-    'Dermatophytosis',
-    Urgency.high,
-    'Refer to veterinarian',
-    [
-      'Isolate the dog from other pets and children to limit zoonotic spread.',
-      'Wash hands after handling the animal, its bedding, or grooming tools.',
-      'Avoid sharing crates or bedding until a vet clears the animal.',
-      'Schedule a veterinary visit to confirm and begin antifungal treatment.',
-    ],
-  ),
-  'Hotspot': _Guidance(
-    'Hotspot (acute moist dermatitis)',
-    Urgency.high,
-    'Refer to veterinarian',
-    [
-      'Carefully trim or clip fur around the lesion to allow airflow.',
-      'Gently clean the affected area with a mild antiseptic solution.',
-      'Prevent the dog from licking or scratching — use an e-collar if needed.',
-      'Schedule a veterinary visit for topical or oral treatment.',
-    ],
-  ),
-  'FAD': _Guidance(
-    'Flea allergy dermatitis',
-    Urgency.medium,
-    'Refer to veterinarian',
-    [
-      'Check the dog thoroughly for fleas, especially around the tail base.',
-      'Apply a vet-recommended flea preventative immediately.',
-      'Treat the home environment (bedding, carpets) for flea eggs and larvae.',
-      'Schedule a veterinary visit if itching persists or worsens.',
-    ],
-  ),
-  'Healthy': _Guidance(
-    'Dermatologically normal',
-    Urgency.low,
-    'Continue monitoring',
-    [
-      'No signs consistent with the trained conditions were detected.',
-      'Keep monitoring the area for changes over the next few days.',
-      'Rescan if redness, hair loss or scaling appears.',
-    ],
-  ),
-};
-
-/// Guidance shown when the result is inconclusive / low-confidence.
-const _inconclusiveGuidance = _Guidance(
-  'Inconclusive',
-  Urgency.medium,
-  'Refer to veterinarian',
-  [
-    'The scan could not confidently identify a condition.',
-    'This may happen with non-canine subjects, poor lighting, or motion blur.',
-    'Ensure the camera is focused on the dog\'s skin, not fur or surroundings.',
-    'Retake the scan with the affected area clearly visible and well-lit.',
-    'If symptoms are present, consult a veterinarian directly.',
-  ],
-);
 
 class ScreeningResult {
   final String condition;
@@ -85,7 +18,7 @@ class ScreeningResult {
   final int totalFrames;
   final Urgency urgency;
   final String referralText;
-  final List<String> guidance;
+  final TriageProtocol? protocol;
   final String? imagePath;
   final Uint8List? heatmap;
   final bool inconclusive;
@@ -102,7 +35,7 @@ class ScreeningResult {
     required this.totalFrames,
     required this.urgency,
     required this.referralText,
-    required this.guidance,
+    this.protocol,
     this.imagePath,
     this.heatmap,
     this.inconclusive = false,
@@ -136,13 +69,13 @@ class ScreeningResult {
     if (frames.isEmpty) {
       return ScreeningResult(
         condition: 'Inconclusive',
-        conditionLabel: _inconclusiveGuidance.conditionLabel,
+        conditionLabel: 'Inconclusive',
         confidence: 0.0,
         agreeVotes: 0,
         totalFrames: 0,
-        urgency: _inconclusiveGuidance.urgency,
-        referralText: _inconclusiveGuidance.referralText,
-        guidance: _inconclusiveGuidance.lines,
+        urgency: Urgency.medium,
+        referralText: 'Refer to veterinarian',
+        protocol: null,
         imagePath: imagePath,
         heatmap: heatmap,
         inconclusive: true,
@@ -181,13 +114,13 @@ class ScreeningResult {
     if (isInconclusive) {
       return ScreeningResult(
         condition: 'Inconclusive',
-        conditionLabel: _inconclusiveGuidance.conditionLabel,
+        conditionLabel: 'Inconclusive',
         confidence: meanConfidence,
         agreeVotes: tta ? 1 : agreeing.length,
         totalFrames: tta ? 1 : frames.length,
-        urgency: _inconclusiveGuidance.urgency,
-        referralText: _inconclusiveGuidance.referralText,
-        guidance: _inconclusiveGuidance.lines,
+        urgency: Urgency.medium,
+        referralText: 'Refer to veterinarian',
+        protocol: null,
         imagePath: imagePath,
         heatmap: heatmap,
         inconclusive: true,
@@ -195,19 +128,24 @@ class ScreeningResult {
       );
     }
 
-    final g = _guidance[winner] ??
-        const _Guidance('Unrecognised', Urgency.medium,
-            'Refer to veterinarian', ['Consult a veterinarian.']);
+    final protocol = kConditionProtocols[winner];
+    final isHealthy = winner.toLowerCase() == 'healthy';
+    final conditionLabel = protocol?.conditionLabel ??
+        (isHealthy ? 'Dermatologically normal' : 'Unrecognised');
+    final urgency = protocol?.urgency ??
+        (isHealthy ? Urgency.low : Urgency.medium);
+    final referralText = protocol?.referralText ??
+        (isHealthy ? 'Continue monitoring' : 'Refer to veterinarian');
 
     return ScreeningResult(
       condition: winner,
-      conditionLabel: g.conditionLabel,
+      conditionLabel: conditionLabel,
       confidence: meanConfidence,
       agreeVotes: tta ? 1 : agreeing.length,
-        totalFrames: tta ? 1 : frames.length,
-      urgency: g.urgency,
-      referralText: g.referralText,
-      guidance: g.lines,
+      totalFrames: tta ? 1 : frames.length,
+      urgency: urgency,
+      referralText: referralText,
+      protocol: protocol,
       imagePath: imagePath,
       heatmap: heatmap,
       inconclusive: false,

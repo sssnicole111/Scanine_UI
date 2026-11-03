@@ -20,7 +20,6 @@ class _ResultTheme {
   static const amber = Color(0xFF8A5A00);
   static const dotAmber = Color(0xFFF5A524);
   static const stepNumber = Color(0xFF8A94B0);
-  static const disclaimer = Color(0xFF8E9CB2);
 }
 
 /// The updated Scanine Result Screen featuring the interactive Grad-CAM/Photo
@@ -44,16 +43,39 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
-  // Set of open row indices
-  final Set<int> _openRows = <int>{};
+  // Both accordions collapsed by default
+  final Set<String> _openRows = <String>{};
   double _sliderPercent = 0.50;
+  _GuidanceTab _selectedTab = _GuidanceTab.dos;
 
   @override
   void initState() {
     super.initState();
-    // Inconclusive results open guidance ("How to get a clearer scan") by default
-    if (widget.result.inconclusive) {
-      _openRows.add(1);
+    _resetSelectedTab();
+  }
+
+  @override
+  void didUpdateWidget(covariant ResultScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.result != widget.result) {
+      _resetSelectedTab();
+    }
+  }
+
+  void _resetSelectedTab() {
+    final p = widget.result.protocol;
+    if (p != null) {
+      if (p.startHere.isNotEmpty) {
+        _selectedTab = _GuidanceTab.dos;
+      } else if (p.doNot.isNotEmpty) {
+        _selectedTab = _GuidanceTab.dont;
+      } else if (p.monitoring.isNotEmpty) {
+        _selectedTab = _GuidanceTab.monitor;
+      } else if (p.homeCare.isNotEmpty) {
+        _selectedTab = _GuidanceTab.homeCare;
+      }
+    } else {
+      _selectedTab = _GuidanceTab.dos;
     }
   }
 
@@ -65,14 +87,105 @@ class _ResultScreenState extends State<ResultScreen> {
     return 'Today · $h:$m $amPm';
   }
 
-  void _toggleRow(int index) {
+  void _toggleRow(String key) {
     setState(() {
-      if (_openRows.contains(index)) {
-        _openRows.remove(index);
+      if (_openRows.contains(key)) {
+        _openRows.remove(key);
       } else {
-        _openRows.add(index);
+        _openRows.add(key);
       }
     });
+  }
+
+  static double _guidanceContainerHeight(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    return (screenHeight * 0.315).clamp(240.0, 300.0);
+  }
+
+  Widget _buildGuidanceContent(BuildContext context, TriageProtocol p) {
+    final tabs = <({_GuidanceTab tab, String label, List<GuidanceStep> steps})>[];
+
+    if (p.startHere.isNotEmpty) {
+      tabs.add((
+        tab: _GuidanceTab.dos,
+        label: "Do's",
+        steps: p.startHere,
+      ));
+    }
+    if (p.doNot.isNotEmpty) {
+      tabs.add((
+        tab: _GuidanceTab.dont,
+        label: "Don't",
+        steps: p.doNot,
+      ));
+    }
+    if (p.monitoring.isNotEmpty) {
+      tabs.add((
+        tab: _GuidanceTab.monitor,
+        label: 'Monitor',
+        steps: p.monitoring,
+      ));
+    }
+    if (p.homeCare.isNotEmpty) {
+      tabs.add((
+        tab: _GuidanceTab.homeCare,
+        label: 'Home care',
+        steps: p.homeCare,
+      ));
+    }
+
+    if (tabs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final activeTab = tabs.firstWhere(
+      (t) => t.tab == _selectedTab,
+      orElse: () => tabs.first,
+    );
+
+    return SizedBox(
+      height: _guidanceContainerHeight(context),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Left vertical rail with plain text tabs, top-aligned, not scrollable
+          IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < tabs.length; i++)
+                  _RailTab(
+                    label: tabs[i].label,
+                    isSelected: activeTab.tab == tabs[i].tab,
+                    onTap: () {
+                      if (_selectedTab != tabs[i].tab) {
+                        setState(() {
+                          _selectedTab = tabs[i].tab;
+                        });
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 1px vertical hairline divider filling container's full height
+          Container(
+            key: const Key('guidance_divider'),
+            width: 1.0,
+            color: _ResultTheme.line,
+          ),
+          const SizedBox(width: 16),
+          // Right column: expanded vertically scrollable list of steps
+          Expanded(
+            child: _GuidanceStepsPane(
+              key: ValueKey('${identityHashCode(widget.result)}_${_selectedTab.name}'),
+              steps: activeTab.steps,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _openFullscreenViewer() {
@@ -215,8 +328,8 @@ class _ResultScreenState extends State<ResultScreen> {
                         // Row 0: Definition / What does this mean?
                         _AccordionRow(
                           title: config.row1Title,
-                          isOpen: _openRows.contains(0),
-                          onTap: () => _toggleRow(0),
+                          isOpen: _openRows.contains('row1'),
+                          onTap: () => _toggleRow('row1'),
                           isLast: false,
                           content: Text(
                             config.row1Text,
@@ -229,26 +342,18 @@ class _ResultScreenState extends State<ResultScreen> {
                           ),
                         ),
 
-                        // Row 1: Guidance steps
+                        // Row 1: Guidance (First-response guidance or Care guidance / How to get a clearer scan)
                         _AccordionRow(
-                          title: config.row2Title,
-                          isOpen: _openRows.contains(1),
-                          onTap: () => _toggleRow(1),
+                          title: config.protocol != null ? 'First-response guidance' : config.row2Title,
+                          isOpen: _openRows.contains('row2'),
+                          onTap: () => _toggleRow('row2'),
                           isLast: true,
-                          content: _StepsList(steps: config.row2Steps),
+                          content: config.protocol != null
+                              ? _buildGuidanceContent(context, config.protocol!)
+                              : _StepsList(steps: config.row2Steps),
                         ),
 
                         const SizedBox(height: 16),
-
-                        // Disclaimer Note
-                        const Text(
-                          'This is a preliminary screening result only.',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: _ResultTheme.disclaimer,
-                            fontFamily: 'InstrumentSans',
-                          ),
-                        ),
 
                         // Bottom clearance to ensure scroll past sticky action buttons
                         SizedBox(
@@ -311,6 +416,7 @@ class _ResultConfig {
   final String line2;
   final String row1Title;
   final String row1Text;
+  final TriageProtocol? protocol;
   final String row2Title;
   final List<String> row2Steps;
   final String primaryButton;
@@ -323,6 +429,7 @@ class _ResultConfig {
     required this.line2,
     required this.row1Title,
     required this.row1Text,
+    this.protocol,
     required this.row2Title,
     required this.row2Steps,
     required this.primaryButton,
@@ -338,6 +445,7 @@ class _ResultConfig {
         line2: 'clear read',
         row1Title: 'Why wasn’t it clear?',
         row1Text: 'The image was too blurry or dark for a reliable result.',
+        protocol: null,
         row2Title: 'How to get a clearer scan',
         row2Steps: [
           'Focus on the dog’s skin, not fur or surroundings.',
@@ -360,6 +468,7 @@ class _ResultConfig {
         line2: 'skin problems',
         row1Title: 'What does this mean?',
         row1Text: 'The scan did not highlight any areas of concern.',
+        protocol: null,
         row2Title: 'Care guidance',
         row2Steps: [
           'Keep checking the coat weekly.',
@@ -375,47 +484,22 @@ class _ResultConfig {
     String line2 = result.condition.toLowerCase();
     String row1Title = 'What is ${result.conditionLabel}?';
     String row1Text = 'A canine skin condition requiring veterinary evaluation.';
-    List<String> steps = result.guidance;
 
     if (cond.contains('ringworm')) {
       line2 = 'ringworm';
       row1Title = 'What is dermatophytosis?';
       row1Text =
           'A fungal infection of the skin, hair and nails, commonly called ringworm.';
-      steps = const [
-        'Keep the area clean and dry.',
-        'Stop scratching or licking; a cone helps.',
-        'It can spread to people and other pets. Wash your hands after touching.',
-        'Book a vet visit to confirm.',
-      ];
     } else if (cond.contains('hotspot') || cond.contains('hot spot')) {
       line2 = 'a hot spot';
       row1Title = 'What is acute moist dermatitis?';
       row1Text =
           'A rapidly developing, painful bacterial skin infection commonly called a hot spot.';
-      steps = const [
-        'Carefully trim or clip fur around the lesion to allow airflow.',
-        'Gently clean the affected area with a mild antiseptic solution.',
-        'Prevent the dog from licking or scratching — a cone helps.',
-        'Book a vet visit for topical or oral treatment.',
-      ];
     } else if (cond.contains('fad') || cond.contains('flea')) {
       line2 = 'flea allergy';
       row1Title = 'What is flea allergy dermatitis?';
       row1Text =
           'An allergic reaction to flea saliva that causes intense itching, inflammation, and skin irritation.';
-      steps = const [
-        'Check the dog thoroughly for fleas, especially around the tail base.',
-        'Apply a vet-recommended flea preventative immediately.',
-        'Treat bedding and carpets for flea eggs and larvae.',
-        'Book a vet visit if itching persists or worsens.',
-      ];
-    } else if (steps.isEmpty) {
-      steps = const [
-        'Keep the area clean and dry.',
-        'Stop scratching or licking; a cone helps.',
-        'Book a vet visit to confirm.',
-      ];
     }
 
     return _ResultConfig(
@@ -425,15 +509,15 @@ class _ResultConfig {
       line2: line2,
       row1Title: row1Title,
       row1Text: row1Text,
-      row2Title: 'First-response guidance',
-      row2Steps: steps,
+      protocol: result.protocol,
+      row2Title: '',
+      row2Steps: const [],
       primaryButton: 'Refer to veterinarian',
       secondaryButton: null,
     );
   }
 }
 
-/// The Hero section with the stacked comparison slider.
 class _HeroComparisonSlider extends StatelessWidget {
   const _HeroComparisonSlider({
     required this.result,
@@ -685,13 +769,16 @@ class _HeroComparisonSlider extends StatelessWidget {
                     ),
 
                     // Timestamp
-                    Text(
-                      timestamp,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        fontFamily: 'InstrumentSans',
+                    Flexible(
+                      child: Text(
+                        timestamp,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'InstrumentSans',
+                        ),
                       ),
                     ),
 
@@ -1197,12 +1284,14 @@ class _ActionFooter extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    primaryText,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'InstrumentSans',
+                  Expanded(
+                    child: Text(
+                      primaryText,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'InstrumentSans',
+                      ),
                     ),
                   ),
                   const Icon(
@@ -1402,6 +1491,194 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
           ],
         ),
       ),
+    );
+  }
+}
+enum _GuidanceTab { dos, dont, monitor, homeCare }
+
+class _RailTab extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _RailTab({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 38.0,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            label,
+            softWrap: false,
+            style: TextStyle(
+              fontFamily: 'InstrumentSans',
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              color: isSelected ? _ResultTheme.navy : _ResultTheme.muted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GuidanceStepsPane extends StatefulWidget {
+  final List<GuidanceStep> steps;
+
+  const _GuidanceStepsPane({
+    super.key,
+    required this.steps,
+  });
+
+  @override
+  State<_GuidanceStepsPane> createState() => _GuidanceStepsPaneState();
+}
+
+class _GuidanceStepsPaneState extends State<_GuidanceStepsPane> {
+  final ScrollController _scrollController = ScrollController();
+  bool _hasMoreBelow = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateAffordance());
+  }
+
+  @override
+  void didUpdateWidget(covariant _GuidanceStepsPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.steps != widget.steps) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0.0);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => _updateAffordance());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _updateAffordance() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final canScroll = pos.maxScrollExtent > 0;
+    final hasMore = canScroll && pos.pixels < (pos.maxScrollExtent - 1.0);
+    if (hasMore != _hasMoreBelow) {
+      setState(() => _hasMoreBelow = hasMore);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              _updateAffordance();
+              if (notification is OverscrollNotification) {
+                final parent = PrimaryScrollController.maybeOf(context);
+                if (parent != null && parent.hasClients) {
+                  parent.position.jumpTo(
+                    (parent.offset + notification.overscroll)
+                        .clamp(0.0, parent.position.maxScrollExtent),
+                  );
+                }
+              }
+              return false;
+            },
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.only(top: 9.0, bottom: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < widget.steps.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 18),
+                    _GuidanceStepItem(step: widget.steps[i]),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (_hasMoreBelow)
+          Positioned(
+            key: const Key('guidance_bottom_fade'),
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 24.0,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      _ResultTheme.bg.withValues(alpha: 0.0),
+                      _ResultTheme.bg,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _GuidanceStepItem extends StatelessWidget {
+  final GuidanceStep step;
+
+  const _GuidanceStepItem({
+    required this.step,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          step.action,
+          style: const TextStyle(
+            fontFamily: 'InstrumentSans',
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            height: 1.35,
+            color: _ResultTheme.navy,
+          ),
+        ),
+        if (step.reason.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            step.reason,
+            style: const TextStyle(
+              fontFamily: 'InstrumentSans',
+              fontSize: 13.5,
+              fontWeight: FontWeight.w400,
+              height: 1.45,
+              color: _ResultTheme.muted,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
