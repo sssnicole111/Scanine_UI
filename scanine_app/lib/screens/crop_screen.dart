@@ -1,12 +1,13 @@
 // lib/screens/crop_screen.dart
 //
-// Crop step for gallery uploads: the user pinches and drags the photo under a
-// fixed square window, then "Use this area" writes that square to a new JPEG.
+// Crop step for gallery uploads: the user picks a shape (the photo's own,
+// square, 4:3 or 3:4), pinches and drags the photo under that window, then
+// "Use this area" writes it to a new JPEG.
 //
-// Square on purpose: the classifier resizes its input straight to 224×224, so
-// a square crop reaches the model without being stretched.
+// The classifier always resizes its input to 224x224, as it did for uncropped
+// uploads; the shape only decides which part of the photo is used.
 //
-// Returns the cropped file's path, or null if the user backs out.
+// Returns a [CropResult], or null if the user backs out.
 
 import 'dart:io';
 import 'dart:math' as math;
@@ -15,6 +16,27 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
+
+/// The cropped photo and its shape (width / height).
+class CropResult {
+  const CropResult(this.path, this.aspect);
+
+  final String path;
+  final double aspect;
+}
+
+/// Crop shapes on offer. [original] uses the photo's own proportions.
+enum _CropShape {
+  original('Original', null),
+  square('Square', 1.0),
+  landscape('4:3', 4 / 3),
+  portrait('3:4', 3 / 4);
+
+  const _CropShape(this.label, this.ratio);
+
+  final String label;
+  final double? ratio;
+}
 
 class CropScreen extends StatefulWidget {
   const CropScreen({super.key, required this.path});
@@ -29,11 +51,13 @@ class _CropScreenState extends State<CropScreen> {
   static const navy = Color(0xFF073858);
   static const background = Color(0xFFF5FAFC);
   static const slate = Color(0xFF526B85);
+  static const chipFill = Color(0xFFEEF2F7);
 
   final _ctrl = TransformationController();
 
   Size? _imageSize; // decoded size, orientation applied
-  double _viewport = 0; // side of the square window, logical px
+  Size _window = Size.zero; // crop window, logical px
+  _CropShape _shape = _CropShape.original;
   bool _saving = false;
   String? _error;
 
@@ -70,24 +94,47 @@ class _CropScreenState extends State<CropScreen> {
     super.dispose();
   }
 
-  /// Scale that makes the image just cover the square window.
-  double get _coverScale {
-    final s = _imageSize!;
-    return _viewport / math.min(s.width, s.height);
+  /// Width / height of the crop window for the chosen shape.
+  double get _ratio {
+    final s = _imageSize;
+    return _shape.ratio ?? (s == null ? 1.0 : s.width / s.height);
   }
 
-  /// Starts centred, with the shorter side filling the window.
+  /// Largest window of [_ratio] that fits the available space.
+  Size _fit(Size box) {
+    var w = box.width;
+    var h = w / _ratio;
+    if (h > box.height) {
+      h = box.height;
+      w = h * _ratio;
+    }
+    return Size(w, h);
+  }
+
+  /// Scale that makes the image just cover the window.
+  double get _coverScale {
+    final s = _imageSize!;
+    return math.max(_window.width / s.width, _window.height / s.height);
+  }
+
+  /// Starts centred, with the photo just covering the window.
   void _resetView() {
     final s = _imageSize;
-    if (s == null || _viewport == 0) return;
+    if (s == null || _window.isEmpty) return;
     final c = _coverScale;
     _ctrl.value = Matrix4.identity()
       ..translateByDouble(
-        -(s.width * c - _viewport) / 2,
-        -(s.height * c - _viewport) / 2,
+        -(s.width * c - _window.width) / 2,
+        -(s.height * c - _window.height) / 2,
         0,
         1,
       );
+  }
+
+  void _setShape(_CropShape shape) {
+    if (shape == _shape) return;
+    setState(() => _shape = shape);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resetView());
   }
 
   Future<void> _confirm() async {
@@ -100,7 +147,8 @@ class _CropScreenState extends State<CropScreen> {
     final zoom = m.getMaxScaleOnAxis();
     final t = m.getTranslation();
     final c = _coverScale;
-    final side = _viewport / zoom / c;
+    final w = _window.width / zoom / c;
+    final h = _window.height / zoom / c;
     final x = (-t.x / zoom) / c;
     final y = (-t.y / zoom) / c;
 
@@ -109,13 +157,14 @@ class _CropScreenState extends State<CropScreen> {
         path: widget.path,
         x: x.round(),
         y: y.round(),
-        side: side.round(),
+        w: w.round(),
+        h: h.round(),
       ));
       final dir = await Directory.systemTemp.createTemp('scanine_crop');
       final out = File('${dir.path}/crop.jpg');
       await out.writeAsBytes(bytes, flush: true);
       if (!mounted) return;
-      Navigator.of(context).pop(out.path);
+      Navigator.of(context).pop(CropResult(out.path, w / h));
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -191,7 +240,7 @@ class _CropScreenState extends State<CropScreen> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Pinch to zoom and drag so the affected area fills the square.',
+                  'Pinch to zoom and drag so the affected area fills the frame.',
                   style: TextStyle(
                     fontFamily: 'InstrumentSans',
                     fontSize: 13.5,
@@ -205,19 +254,33 @@ class _CropScreenState extends State<CropScreen> {
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, box) {
-                      final side = math.min(box.maxWidth, box.maxHeight);
-                      if (side != _viewport) {
-                        _viewport = side;
+                      final window = _fit(box.biggest);
+                      if (window != _window) {
+                        _window = window;
                         WidgetsBinding.instance
                             .addPostFrameCallback((_) => _resetView());
                       }
                       return Center(
-                        child: SizedBox.square(
-                          dimension: side,
-                          child: _cropWindow(side),
+                        child: SizedBox.fromSize(
+                          size: window,
+                          child: _cropWindow(window),
                         ),
                       );
                     },
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // ── Shape choices ────────────────────────────────
+                Center(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (final shape in _CropShape.values) _shapeChip(shape),
+                    ],
                   ),
                 ),
 
@@ -233,7 +296,7 @@ class _CropScreenState extends State<CropScreen> {
                   ),
                 ],
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
                 SizedBox(
                   width: double.infinity,
@@ -278,24 +341,58 @@ class _CropScreenState extends State<CropScreen> {
     );
   }
 
-  Widget _cropWindow(double side) {
+  Widget _shapeChip(_CropShape shape) {
+    final selected = shape == _shape;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        onTap: () => _setShape(shape),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? navy : chipFill,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Text(
+            shape.label,
+            style: TextStyle(
+              fontFamily: 'InstrumentSans',
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : navy,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cropWindow(Size window) {
     final s = _imageSize;
+    final c = s == null || window.isEmpty
+        ? 0.0
+        : math.max(window.width / s.width, window.height / s.height);
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Stack(
         fit: StackFit.expand,
         children: [
           const ColoredBox(color: Color(0xFF1A2434)),
-          if (s != null && side > 0)
+          if (s != null && c > 0)
             InteractiveViewer(
+              key: ValueKey(_shape),
               transformationController: _ctrl,
               constrained: false,
               minScale: 1.0,
               maxScale: 6.0,
               child: Image.file(
                 File(widget.path),
-                width: s.width * (side / math.min(s.width, s.height)),
-                height: s.height * (side / math.min(s.width, s.height)),
+                width: s.width * c,
+                height: s.height * c,
                 fit: BoxFit.fill,
                 filterQuality: FilterQuality.medium,
               ),
@@ -311,15 +408,16 @@ class _CropScreenState extends State<CropScreen> {
   }
 }
 
-/// Isolate entry: decode, apply EXIF orientation, crop the square, re-encode.
-Uint8List _cropToJpeg(({String path, int x, int y, int side}) a) {
+/// Isolate entry: decode, apply EXIF orientation, crop the area, re-encode.
+Uint8List _cropToJpeg(({String path, int x, int y, int w, int h}) a) {
   final decoded = img.decodeImage(File(a.path).readAsBytesSync());
   if (decoded == null) throw const FormatException('Unreadable image');
   final src = img.bakeOrientation(decoded);
-  final side = a.side.clamp(1, math.min(src.width, src.height)).toInt();
-  final x = a.x.clamp(0, src.width - side).toInt();
-  final y = a.y.clamp(0, src.height - side).toInt();
-  final cropped = img.copyCrop(src, x: x, y: y, width: side, height: side);
+  final w = a.w.clamp(1, src.width).toInt();
+  final h = a.h.clamp(1, src.height).toInt();
+  final x = a.x.clamp(0, src.width - w).toInt();
+  final y = a.y.clamp(0, src.height - h).toInt();
+  final cropped = img.copyCrop(src, x: x, y: y, width: w, height: h);
   return img.encodeJpg(cropped, quality: 92);
 }
 

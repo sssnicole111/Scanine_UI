@@ -25,6 +25,7 @@ class _UploadScreenState extends State<UploadScreen> {
   final _picker = ImagePicker();
   String? _path; // cropped photo that gets analyzed
   String? _originalPath; // as picked, so "Adjust" can re-crop from scratch
+  double _aspect = 1; // width / height of the crop
   String? _error;
   _UploadIssue? _issue; // quality or dog-check problem with the selected photo
   bool _checking = false;
@@ -51,14 +52,15 @@ class _UploadScreenState extends State<UploadScreen> {
 
   /// Opens the crop step; backing out keeps the previous selection.
   Future<void> _crop(String original) async {
-    final cropped = await AppRoutes.push<String>(
+    final cropped = await AppRoutes.push<CropResult>(
       context,
       (_) => CropScreen(path: original),
     );
     if (cropped == null || !mounted) return;
     setState(() {
       _originalPath = original;
-      _path = cropped;
+      _path = cropped.path;
+      _aspect = cropped.aspect;
       _issue = null;
     });
   }
@@ -103,6 +105,7 @@ class _UploadScreenState extends State<UploadScreen> {
   @override
   Widget build(BuildContext context) {
     final hasPhoto = _path != null;
+    final noDog = _issue == _UploadIssue.noDog;
 
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
@@ -193,6 +196,7 @@ class _UploadScreenState extends State<UploadScreen> {
                           onChangePhoto: _pick,
                           onAdjust: () => _crop(_originalPath!),
                           issue: _issue,
+                          aspect: _aspect,
                         )
                       : _UploadDropzoneCard(onTap: _pick),
                 ),
@@ -235,12 +239,17 @@ class _UploadScreenState extends State<UploadScreen> {
                     width: double.infinity,
                     height: 60,
                     child: ElevatedButton(
-                      // With a warning showing, rechecking gives the same
-                      // answer, so the main action becomes picking again.
-                      onPressed: _issue != null ? _pick : _analyze,
+                      // No dog: nothing to scan, so the button only reports it
+                      // (greyed, not tappable). Another issue: rechecking gives
+                      // the same answer, so the action becomes picking again.
+                      onPressed: noDog
+                          ? null
+                          : (_issue != null ? _pick : _analyze),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: navy,
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor: const Color(0xFFE3E8EF),
+                        disabledForegroundColor: T.ink3,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
@@ -255,16 +264,28 @@ class _UploadScreenState extends State<UploadScreen> {
                                 color: Colors.white,
                               ),
                             )
-                          : Text(
-                              _issue != null
-                                  ? 'Choose another photo'
-                                  : 'Start screening',
-                              style: const TextStyle(
-                                fontFamily: 'InstrumentSans',
-                                fontSize: 16.5,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.3,
-                              ),
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (noDog) ...[
+                                  const Icon(Icons.error_outline_rounded,
+                                      size: 20),
+                                  const SizedBox(width: 8),
+                                ],
+                                Text(
+                                  noDog
+                                      ? 'No dog found'
+                                      : _issue != null
+                                          ? 'Choose another photo'
+                                          : 'Ready to scan',
+                                  style: const TextStyle(
+                                    fontFamily: 'InstrumentSans',
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                              ],
                             ),
                     ),
                   ),
@@ -406,12 +427,16 @@ class _PreviewCard extends StatelessWidget {
     required this.onChangePhoto,
     required this.onAdjust,
     this.issue,
+    this.aspect = 1,
   });
 
   final String path;
   final VoidCallback onChangePhoto;
   final VoidCallback onAdjust;
   final _UploadIssue? issue;
+
+  /// Width / height of the cropped photo, shown in its own shape.
+  final double aspect;
 
   static const navy = Color(0xFF073858);
 
@@ -438,11 +463,11 @@ class _PreviewCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // The crop is square, so show it square rather than re-cropping it.
+          // Shown in the crop's own shape, never re-cropped.
           Expanded(
             child: Center(
               child: AspectRatio(
-                aspectRatio: 1,
+                aspectRatio: aspect,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(18),
                   child: Image.file(File(path), fit: BoxFit.cover),
@@ -450,51 +475,43 @@ class _PreviewCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 14),
-          // Status on its own line, so it never competes with the buttons.
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  issue == null
-                      ? Icons.check_circle_rounded
-                      : Icons.error_rounded,
-                  color: issue == null ? navy : amber,
-                  size: 18,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  issue?.status ?? 'Ready',
-                  style: TextStyle(
-                    fontFamily: 'InstrumentSans',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: issue == null ? navy : amberInk,
+          // "Ready" now lives on the main button. Only a problem is shown
+          // here: for "No dog found" the button already names it, so just the
+          // hint; for quality issues, the status and its hint.
+          if (issue != null) ...[
+            const SizedBox(height: 16),
+            if (issue != _UploadIssue.noDog)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_rounded, color: amber, size: 18),
+                  const SizedBox(width: 6),
+                  Text(
+                    issue!.status,
+                    style: const TextStyle(
+                      fontFamily: 'InstrumentSans',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: amberInk,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          if (issue != null)
+                ],
+              ),
             Padding(
-              // Lines up with the status text, past the icon.
-              padding: const EdgeInsets.only(left: 24, top: 2),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  issue!.hint,
-                  style: const TextStyle(
-                    fontFamily: 'InstrumentSans',
-                    fontSize: 13,
-                    height: 1.35,
-                    color: T.ink2,
-                  ),
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                issue!.hint,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: 'InstrumentSans',
+                  fontSize: 13,
+                  height: 1.35,
+                  color: T.ink2,
                 ),
               ),
             ),
-          const SizedBox(height: 12),
+          ],
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(child: _action(Icons.crop_rounded, 'Adjust', onAdjust)),
