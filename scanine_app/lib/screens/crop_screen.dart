@@ -272,16 +272,15 @@ class _CropScreenState extends State<CropScreen> {
 
                 const SizedBox(height: 20),
 
-                // ── Shape choices ────────────────────────────────
-                Center(
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      for (final shape in _CropShape.values) _shapeChip(shape),
+                // ── Shape choices: one row of equal-width pills ───
+                Row(
+                  children: [
+                    for (final shape in _CropShape.values) ...[
+                      if (shape != _CropShape.values.first)
+                        const SizedBox(width: 8),
+                      Expanded(child: _shapeChip(shape)),
                     ],
-                  ),
+                  ],
                 ),
 
                 if (_error != null) ...[
@@ -350,15 +349,17 @@ class _CropScreenState extends State<CropScreen> {
         onTap: () => _setShape(shape),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? navy : chipFill,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
             shape.label,
+            maxLines: 1,
+            overflow: TextOverflow.fade,
+            softWrap: false,
             style: TextStyle(
               fontFamily: 'InstrumentSans',
               fontSize: 13.5,
