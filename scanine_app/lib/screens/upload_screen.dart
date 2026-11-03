@@ -6,8 +6,10 @@ import 'package:image_picker/image_picker.dart';
 
 import '../ml/image_quality.dart';
 import '../ml/subject_check.dart';
+import '../models/screening_result.dart';
 import 'analyzing_screen.dart';
 import 'crop_screen.dart';
+import 'result_screen.dart';
 import '../theme/routes.dart';
 import '../theme/tokens.dart';
 import '../widgets/scanine_mark.dart';
@@ -83,6 +85,15 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   void _proceed() {
+    // No dog found: say so instead of running the classifier, which would
+    // always name one of its four conditions.
+    if (_issue == _UploadIssue.noDog) {
+      AppRoutes.pushReplacement(
+        context,
+        (_) => ResultScreen(result: ScreeningResult.noDog(imagePath: _path!)),
+      );
+      return;
+    }
     AppRoutes.pushReplacement(
       context,
       (_) => AnalyzingScreen(imagePaths: [_path!]),
@@ -439,38 +450,37 @@ class _PreviewCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                issue == null
-                    ? Icons.check_circle_rounded
-                    : Icons.error_rounded,
-                color: issue == null ? navy : amber,
-                size: 18,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
+          const SizedBox(height: 14),
+          // Status on its own line, so it never competes with the buttons.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  issue == null
+                      ? Icons.check_circle_rounded
+                      : Icons.error_rounded,
+                  color: issue == null ? navy : amber,
+                  size: 18,
+                ),
+                const SizedBox(width: 6),
+                Text(
                   issue?.status ?? 'Ready',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'InstrumentSans',
-                    fontSize: 13.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: issue == null ? navy : amberInk,
                   ),
                 ),
-              ),
-              _action(Icons.crop_rounded, 'Adjust', onAdjust),
-              _action(Icons.refresh_rounded, 'Change', onChangePhoto),
-            ],
+              ],
+            ),
           ),
           if (issue != null)
             Padding(
               // Lines up with the status text, past the icon.
-              padding: const EdgeInsets.only(left: 24, right: 8, bottom: 4),
+              padding: const EdgeInsets.only(left: 24, top: 2),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -484,24 +494,42 @@ class _PreviewCard extends StatelessWidget {
                 ),
               ),
             ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _action(Icons.crop_rounded, 'Adjust', onAdjust)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _action(Icons.refresh_rounded, 'Change', onChangePhoto),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
+  /// A soft, equal-width pill on the app's light surface colour.
   Widget _action(IconData icon, String label, VoidCallback onTap) {
-    return TextButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 16),
-      label: Text(
-        label,
-        style: const TextStyle(
-          fontFamily: 'InstrumentSans',
-          fontSize: 13.5,
-          fontWeight: FontWeight.w600,
+    return SizedBox(
+      height: 44,
+      child: TextButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 17),
+        label: Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'InstrumentSans',
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor: navy,
+          backgroundColor: T.bgGradientEnd,
+          shape: const StadiumBorder(),
         ),
       ),
-      style: TextButton.styleFrom(foregroundColor: navy),
     );
   }
 }

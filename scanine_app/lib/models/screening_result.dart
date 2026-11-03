@@ -23,6 +23,11 @@ class ScreeningResult {
   final Uint8List? heatmap;
   final bool inconclusive;
 
+  /// True when the dog check found no dog and the user continued anyway.
+  /// The classifier is not run: it only knows four skin conditions and would
+  /// always name one of them, even for a photo of text.
+  final bool notDog;
+
   /// True when the vote came from augmented views of one uploaded
   /// photo rather than from five separately captured frames.
   final bool tta;
@@ -40,7 +45,26 @@ class ScreeningResult {
     this.heatmap,
     this.inconclusive = false,
     this.tta = false,
+    this.notDog = false,
   });
+
+  /// Result for an upload the dog check rejected. Shown like an inconclusive
+  /// result (no condition, no heatmap) with its own wording.
+  factory ScreeningResult.noDog({required String imagePath}) =>
+      ScreeningResult(
+        condition: 'No dog found',
+        conditionLabel: 'No dog found',
+        confidence: 0.0,
+        agreeVotes: 0,
+        totalFrames: 0,
+        urgency: Urgency.low,
+        referralText: 'Choose another photo',
+        protocol: null,
+        imagePath: imagePath,
+        inconclusive: true,
+        tta: true,
+        notDog: true,
+      );
 
   int get confidencePercent => (confidence * 100).round();
   bool get hasHeatmap => heatmap != null;

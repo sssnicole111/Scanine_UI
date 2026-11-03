@@ -525,7 +525,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
           bestPath:
               widget.imagePaths.isNotEmpty ? widget.imagePaths.first : '',
           heatmapPng: null,
-          useTta: false,
+          useTta: _useTta, // keeps "Choose another photo" for failed uploads
           trace: null,
         );
       }),
@@ -756,12 +756,18 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
                   final scan = _scanAnim.value;
                   final inSweep =
                       _ctrl.value >= _kScanStart && _ctrl.value <= _kScanEnd;
+                  // The painter shows the whole heat map when scan is null,
+                  // which is right after the sweep but not before it: if the
+                  // overlay arrives while the dim is still fading in, it
+                  // would flash fully revealed.
+                  final beforeSweep = _ctrl.value < _kScanStart;
                   return CustomPaint(
                     painter: AmberScanPainter(
                       scan: inSweep ? scan : null,
                       dimAlpha: _dimAnim.value,
                       handoff: _handoffAnim.value,
-                      overlayImage: _overlayImage,
+                      overlayImage:
+                          beforeSweep && !_reducedMotion ? null : _overlayImage,
                       config: AmberPainterConfig(
                         lowEndMode: _lowEnd,
                         reducedMotion: _reducedMotion,

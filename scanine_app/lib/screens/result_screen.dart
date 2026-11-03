@@ -8,7 +8,9 @@ import 'package:flutter/services.dart';
 import '../models/scan_trace.dart';
 import '../models/screening_result.dart';
 import '../theme/routes.dart';
+import 'camera_screen.dart';
 import 'referral_screen.dart';
+import 'upload_screen.dart';
 
 /// Design tokens matching the result screen prototype and design specification.
 class _ResultTheme {
@@ -378,8 +380,12 @@ class _ResultScreenState extends State<ResultScreen> {
               secondaryText: config.secondaryButton,
               onPrimaryTap: () {
                 if (r.inconclusive) {
-                  // Retake scan -> go back to Camera/Upload screen
-                  Navigator.of(context).pop();
+                  // Back to where the scan came from: the camera was replaced
+                  // on the way here, so popping would land on Home.
+                  AppRoutes.pushReplacement(
+                    context,
+                    (_) => r.tta ? const UploadScreen() : const CameraScreen(),
+                  );
                 } else if (r.urgency == Urgency.low) {
                   // Continue monitoring -> back to Home
                   Navigator.of(context).popUntil((route) => route.isFirst);
@@ -437,8 +443,29 @@ class _ResultConfig {
   });
 
   factory _ResultConfig.fromResult(ScreeningResult result) {
-    if (result.inconclusive) {
+    if (result.notDog) {
       return const _ResultConfig(
+        tag: 'No dog found',
+        statusColor: _ResultTheme.amber,
+        line1: 'We couldn’t find',
+        line2: 'a dog',
+        row1Title: 'Why is there no result?',
+        row1Text: 'Scanine only screens dogs’ skin. This photo doesn’t appear '
+            'to show a dog, so no condition was checked.',
+        protocol: null,
+        row2Title: 'How to get a usable photo',
+        row2Steps: [
+          'Take a close-up of the affected area on your dog’s skin.',
+          'Fill most of the frame with the skin, not the surroundings.',
+          'Use bright, even light and hold the phone steady.',
+        ],
+        primaryButton: 'Choose another photo',
+        secondaryButton: null,
+      );
+    }
+
+    if (result.inconclusive) {
+      return _ResultConfig(
         tag: 'Low confidence',
         statusColor: _ResultTheme.amber,
         line1: 'We couldn’t get a',
@@ -452,7 +479,8 @@ class _ResultConfig {
           'Use bright, even light and hold the phone steady.',
           'Keep the affected area clearly in view.',
         ],
-        primaryButton: 'Retake scan',
+        // Uploads go back to choosing a photo, so say that.
+        primaryButton: result.tta ? 'Choose another photo' : 'Retake scan',
         secondaryButton: 'Refer to veterinarian',
       );
     }

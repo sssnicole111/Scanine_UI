@@ -27,12 +27,16 @@ class CameraScreen extends StatefulWidget {
   State<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
+class _CameraScreenState extends State<CameraScreen>
+    with WidgetsBindingObserver {
   CameraController? _controller;
   bool _ready = false;
   bool _capturing = false; // true while the burst is running
   bool _isStreaming = false;
   bool _isProcessingFrame = false;
+
+  /// True while the app is in the background and the camera is released.
+  bool _suspended = false;
   int _lastSampleTimestamp = 0;
   FlashMode _flashMode = FlashMode.off;
 
@@ -91,6 +95,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final route = ModalRoute.of(context);
@@ -111,9 +116,41 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopLiveQualityStream();
     _controller?.dispose();
     super.dispose();
+  }
+
+  /// Releases the camera when the app leaves the foreground and reopens it on
+  /// return (camera plugin guidance), so the preview never comes back frozen.
+  /// An interrupted burst starts again from 0/5.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = _controller;
+    if (state == AppLifecycleState.inactive) {
+      // Not yet initialised (e.g. the permission prompt is showing): leave it.
+      if (controller == null || !controller.value.isInitialized) return;
+      _suspended = true;
+      _isStreaming = false;
+      _controller = null;
+      controller.dispose();
+      for (final p in _shots) {
+        try {
+          File(p).deleteSync();
+        } catch (_) {}
+      }
+      _shots.clear();
+      setState(() {
+        _ready = false;
+        _frameIndex = 0;
+        _rejectWarning = null;
+        _flashMode = FlashMode.off; // a reopened camera starts with flash off
+      });
+    } else if (state == AppLifecycleState.resumed && _suspended) {
+      _suspended = false;
+      _start();
+    }
   }
 
   Future<void> _start() async {
@@ -262,7 +299,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // per slot) rather than blocking on user confirmation, because
       // animals move and waiting for manual retaps costs good frames.
       while (accepted < kTotalFrames) {
-        if (!mounted) return;
+        if (!mounted || _suspended) return;
 
         String shotPath;
         if (controller != null && _ready) {
@@ -339,12 +376,13 @@ class _CameraScreenState extends State<CameraScreen> {
         (_) => AnalyzingScreen(imagePaths: List.of(_shots)),
       );
     } on CameraException catch (e) {
-      _fail("Couldn't capture a frame", e.description ?? e.code);
+      // Backgrounding mid-burst disposes the camera; that's not an error.
+      if (!_suspended) _fail("Couldn't capture a frame", e.description ?? e.code);
     } catch (e) {
-      _fail('Capture error', e.toString());
+      if (!_suspended) _fail('Capture error', e.toString());
     } finally {
       if (mounted) setState(() => _capturing = false);
-      _startLiveQualityStream();
+      if (!_suspended) _startLiveQualityStream();
     }
   }
 
