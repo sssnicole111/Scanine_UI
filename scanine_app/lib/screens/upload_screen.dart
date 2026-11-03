@@ -63,13 +63,16 @@ class _UploadScreenState extends State<UploadScreen> {
       _aspect = cropped.aspect;
       _issue = null;
     });
+    _check();
   }
 
-  /// Runs the same blur/light gate as the camera, plus the dog check. A
-  /// problem is shown with "Analyze anyway", since either check can be wrong.
-  Future<void> _analyze() async {
+  /// Runs the same blur/light gate as the camera, plus the dog check, as soon
+  /// as a photo is cropped, so the button can say whether it's ready. A
+  /// problem is shown with "Use this photo anyway", since either check can
+  /// be wrong.
+  Future<void> _check() async {
     final path = _path;
-    if (path == null || _checking) return;
+    if (path == null) return;
     setState(() {
       _checking = true;
       _issue = null;
@@ -78,12 +81,12 @@ class _UploadScreenState extends State<UploadScreen> {
     final subject = SubjectCheck.assessFile(path);
     final q = await quality;
     final s = await subject;
-    if (!mounted) return;
+    // A newer photo may have been picked while this one was being checked.
+    if (!mounted || path != _path) return;
     setState(() {
       _checking = false;
       _issue = s.isNotDog ? _UploadIssue.noDog : _UploadIssue.fromQuality(q);
     });
-    if (_issue == null) _proceed();
   }
 
   void _proceed() {
@@ -239,17 +242,22 @@ class _UploadScreenState extends State<UploadScreen> {
                     width: double.infinity,
                     height: 60,
                     child: ElevatedButton(
-                      // No dog: nothing to scan, so the button only reports it
-                      // (greyed, not tappable). Another issue: rechecking gives
-                      // the same answer, so the action becomes picking again.
-                      onPressed: noDog
+                      // The photo was checked right after cropping. Passed:
+                      // go straight to the scan. No dog: nothing to scan, so
+                      // the button only reports it (greyed, not tappable).
+                      // Another issue: the action becomes picking again.
+                      onPressed: _checking || noDog
                           ? null
-                          : (_issue != null ? _pick : _analyze),
+                          : (_issue != null ? _pick : _proceed),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: navy,
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFFE3E8EF),
-                        disabledForegroundColor: T.ink3,
+                        // While checking it stays navy, so it doesn't look
+                        // like the grey "No dog found" state.
+                        disabledBackgroundColor:
+                            _checking ? navy : const Color(0xFFE3E8EF),
+                        disabledForegroundColor:
+                            _checking ? Colors.white : T.ink3,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
@@ -257,12 +265,27 @@ class _UploadScreenState extends State<UploadScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                       ),
                       child: _checking
-                          ? const SizedBox.square(
-                              dimension: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                color: Colors.white,
-                              ),
+                          ? const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Checking photo…',
+                                  style: TextStyle(
+                                    fontFamily: 'InstrumentSans',
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                              ],
                             )
                           : Row(
                               mainAxisSize: MainAxisSize.min,
