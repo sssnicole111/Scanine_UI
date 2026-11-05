@@ -12,6 +12,9 @@
 // Thresholds from the on-phone evaluation (854 dog / 148 not-dog photos):
 // 1.5% of dog photos rejected, 49% of not-dog photos caught, 5.5% unsure.
 
+import 'dart:ui' show Size;
+
+import 'package:camera/camera.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 
 enum SubjectVerdict { dog, notDog, unsure }
@@ -82,17 +85,51 @@ class SubjectCheck {
 
   static ImageLabeler? _labeler;
 
+  static ImageLabeler get _shared => _labeler ??= ImageLabeler(
+        options: ImageLabelerOptions(confidenceThreshold: 0.3),
+      );
+
   /// Labels the photo at [path]. Any failure returns "unsure", so the check
   /// can never block a screening on its own error.
   static Future<SubjectAssessment> assessFile(
     String path, {
     SubjectThresholds thresholds = const SubjectThresholds(),
+  }) =>
+      _assess(InputImage.fromFilePath(path), thresholds);
+
+  /// Labels a live camera preview frame (NV21, as the camera screen requests)
+  /// for the "no dog in view" hint while aiming. Other frame formats, and any
+  /// failure, return "unsure", so the hint never shows by mistake.
+  static Future<SubjectAssessment> assessCameraFrame(
+    CameraImage frame, {
+    required int sensorOrientation,
+    SubjectThresholds thresholds = const SubjectThresholds(),
   }) async {
+    if (frame.format.group != ImageFormatGroup.nv21 || frame.planes.length != 1) {
+      return SubjectAssessment.unknown;
+    }
+    final plane = frame.planes.first;
+    return _assess(
+      InputImage.fromBytes(
+        bytes: plane.bytes,
+        metadata: InputImageMetadata(
+          size: Size(frame.width.toDouble(), frame.height.toDouble()),
+          rotation: InputImageRotationValue.fromRawValue(sensorOrientation) ??
+              InputImageRotation.rotation0deg,
+          format: InputImageFormat.nv21,
+          bytesPerRow: plane.bytesPerRow,
+        ),
+      ),
+      thresholds,
+    );
+  }
+
+  static Future<SubjectAssessment> _assess(
+    InputImage image,
+    SubjectThresholds thresholds,
+  ) async {
     try {
-      final labeler = _labeler ??= ImageLabeler(
-        options: ImageLabelerOptions(confidenceThreshold: 0.3),
-      );
-      final labels = await labeler.processImage(InputImage.fromFilePath(path));
+      final labels = await _shared.processImage(image);
       return SubjectAssessment.decide(
         labels.map((l) => (l.label, l.confidence)),
         thresholds: thresholds,

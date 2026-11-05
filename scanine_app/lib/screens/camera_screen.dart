@@ -38,6 +38,19 @@ class _CameraScreenState extends State<CameraScreen>
   /// True while the app is in the background and the camera is released.
   bool _suspended = false;
   int _lastSampleTimestamp = 0;
+
+  // Live dog check while aiming: about once a second, one preview frame goes
+  // to ML Kit. The hint shows after two "no dog" results in a row (so it
+  // doesn't flicker) and clears on the first result that isn't.
+  static const int _dogCheckEveryMs = 1000;
+  static const String _noDogHint =
+      "No dog in view. Point the camera at your dog's skin.";
+  static const String _burstNoDogHint =
+      "No dog found. Point the camera at your dog's skin.";
+  bool _dogCheckBusy = false;
+  int _lastDogCheck = 0;
+  int _noDogStreak = 0;
+  bool _liveNoDog = false;
   FlashMode _flashMode = FlashMode.off;
 
   Future<void> _toggleFlash() async {
@@ -145,6 +158,7 @@ class _CameraScreenState extends State<CameraScreen>
         _ready = false;
         _frameIndex = 0;
         _rejectWarning = null;
+        _clearLiveDogHint();
         _flashMode = FlashMode.off; // a reopened camera starts with flash off
       });
     } else if (state == AppLifecycleState.resumed && _suspended) {
@@ -178,6 +192,9 @@ class _CameraScreenState extends State<CameraScreen>
         back,
         ResolutionPreset.high,
         enableAudio: false,
+        // ML Kit reads NV21 preview frames directly; NV21 keeps the
+        // luminance plane first, so the live focus/light check is unchanged.
+        imageFormatGroup: ImageFormatGroup.nv21,
       );
       await controller.initialize();
 
@@ -222,6 +239,7 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       controller.startImageStream((CameraImage image) {
         final now = DateTime.now().millisecondsSinceEpoch;
+        _maybeCheckDog(image, controller.description.sensorOrientation, now);
         // Sample every ~260ms to maintain smooth 60fps UI while providing reactive telemetry
         if (now - _lastSampleTimestamp < 260 ||
             _isProcessingFrame ||
@@ -246,6 +264,37 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  /// Sends one preview frame to the dog check if it's time and none is
+  /// running. ML Kit works on its own thread, so the preview stays smooth.
+  void _maybeCheckDog(CameraImage image, int sensorOrientation, int now) {
+    if (_capturing || _dogCheckBusy || now - _lastDogCheck < _dogCheckEveryMs) {
+      return;
+    }
+    _dogCheckBusy = true;
+    _lastDogCheck = now;
+    SubjectCheck.assessCameraFrame(image, sensorOrientation: sensorOrientation)
+        .then((a) {
+      _dogCheckBusy = false;
+      if (!mounted || _capturing) return;
+      _noDogStreak = a.isNotDog ? _noDogStreak + 1 : 0;
+      final show = _noDogStreak >= 2;
+      // A burst's "No dog found" is stale once a dog is back in view.
+      final clearBurstWarning =
+          !a.isNotDog && _rejectWarning == _burstNoDogHint;
+      if (show != _liveNoDog || clearBurstWarning) {
+        setState(() {
+          _liveNoDog = show;
+          if (clearBurstWarning) _rejectWarning = null;
+        });
+      }
+    });
+  }
+
+  void _clearLiveDogHint() {
+    _noDogStreak = 0;
+    _liveNoDog = false;
+  }
+
   /// Safely pauses the live image stream before taking a picture.
   Future<void> _stopLiveQualityStream() async {
     final controller = _controller;
@@ -268,6 +317,13 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  /// Hint under the viewfinder: a burst's warning first, then the live
+  /// "no dog in view", then the live focus/light guidance.
+  String get _hintText =>
+      _rejectWarning ?? (_liveNoDog ? _noDogHint : _liveQuality.feedbackMessage);
+
+  bool get _hintIsWarning => _rejectWarning != null || _liveNoDog;
+
   void _fail(String title, String body) {
     if (!mounted) return;
     setState(() {
@@ -284,6 +340,7 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() {
       _capturing = true;
       _rejectWarning = null;
+      _clearLiveDogHint();
     });
 
     // Stop live quality stream so camera hardware is free for capture
@@ -343,8 +400,7 @@ class _CameraScreenState extends State<CameraScreen>
               await File(shotPath).delete();
             } catch (_) {}
             if (mounted) {
-              setState(() => _rejectWarning =
-                  "No dog found. Point the camera at your dog's skin.");
+              setState(() => _rejectWarning = _burstNoDogHint);
             }
             return;
           }
@@ -533,18 +589,16 @@ class _CameraScreenState extends State<CameraScreen>
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 220),
                       child: Text(
-                        _rejectWarning ?? _liveQuality.feedbackMessage,
-                        key: ValueKey(
-                          _rejectWarning ?? _liveQuality.feedbackMessage,
-                        ),
+                        _hintText,
+                        key: ValueKey(_hintText),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'InstrumentSans',
                           fontSize: 13.5,
-                          fontWeight: _rejectWarning != null
+                          fontWeight: _hintIsWarning
                               ? FontWeight.w600
                               : FontWeight.w400,
-                          color: _rejectWarning != null
+                          color: _hintIsWarning
                               ? const Color(0xFFD49339)
                               : const Color(0xFF5F708A),
                           letterSpacing: -0.15,
