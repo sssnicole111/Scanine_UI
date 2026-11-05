@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -265,10 +264,17 @@ class _ResultScreenState extends State<ResultScreen> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                _ScanineBadgeIcon(
-                                  color: config.statusColor,
-                                  size: 14,
-                                ),
+                                if (config.tagIcon != null)
+                                  Icon(
+                                    config.tagIcon,
+                                    color: config.statusColor,
+                                    size: 16,
+                                  )
+                                else
+                                  _ScanineBadgeIcon(
+                                    color: config.statusColor,
+                                    size: 14,
+                                  ),
                                 const SizedBox(width: 8),
                                 Text(
                                   config.tag,
@@ -428,8 +434,12 @@ class _ResultConfig {
   final String primaryButton;
   final String? secondaryButton;
 
+  /// Icon before [tag]; the Scanine badge when null.
+  final IconData? tagIcon;
+
   const _ResultConfig({
     required this.tag,
+    this.tagIcon,
     required this.statusColor,
     required this.line1,
     required this.line2,
@@ -466,7 +476,10 @@ class _ResultConfig {
 
     if (result.inconclusive) {
       return _ResultConfig(
-        tag: 'Low confidence',
+        // The tag says what the photo can't show; the headline already says
+        // the read wasn't clear.
+        tag: 'Heatmap not available',
+        tagIcon: Icons.visibility_off_outlined,
         statusColor: _ResultTheme.amber,
         line1: 'We couldn’t get a',
         line2: 'clear read',
@@ -493,9 +506,12 @@ class _ResultConfig {
         tag: '',
         statusColor: _ResultTheme.muted,
         line1: 'No signs of',
-        line2: 'skin problems',
+        line2: 'ringworm, hot spot or flea allergy dermatitis',
         row1Title: 'What does this mean?',
-        row1Text: 'The scan did not highlight any areas of concern.',
+        row1Text: 'Scanine screens for three conditions: ringworm, hot spot '
+            'and flea allergy dermatitis. This scan found no signs of them. '
+            'It can’t rule out other skin problems, so see a vet if '
+            'you’re worried.',
         protocol: null,
         row2Title: 'Care guidance',
         row2Steps: [
@@ -565,7 +581,10 @@ class _HeroComparisonSlider extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onExpand;
 
-  bool get _showHeatmap => !result.inconclusive && result.hasHeatmap;
+  // A healthy result's Grad-CAM only shows what looked healthy, which reads
+  // like a problem area, so it isn't shown.
+  bool get _showHeatmap =>
+      !result.inconclusive && result.hasHeatmap && !_isHealthyResult(result);
 
   @override
   Widget build(BuildContext context) {
@@ -604,15 +623,6 @@ class _HeroComparisonSlider extends StatelessWidget {
             children: [
               // Layer 1: Raw photo (bottom base layer)
               _buildRawLayer(),
-
-              // Inconclusive: one even scrim over the blurred photo. The only
-              // gradient left is the shared bottom fade into the page.
-              if (result.inconclusive)
-                IgnorePointer(
-                  child: ColoredBox(
-                    color: const Color(0xFF14243B).withValues(alpha: 0.35),
-                  ),
-                ),
 
               // Layer 2: Heatmap layer (clipped to percent)
               if (_showHeatmap)
@@ -763,14 +773,19 @@ class _HeroComparisonSlider extends StatelessWidget {
 
               // No heatmap: a centred pill on the photo, clear of the light
               // bottom fade so the white text stays readable.
-              if (!_showHeatmap)
-                const Positioned(
+              // (Inconclusive results say it in the tag under the photo.)
+              if (!_showHeatmap && !(result.inconclusive && !result.notDog))
+                Positioned(
                   left: 24,
                   right: 24,
                   top: 0,
                   bottom: 40,
                   child: IgnorePointer(
-                    child: Center(child: _HeatmapUnavailablePill()),
+                    child: Center(
+                      child: _HeatmapUnavailablePill(
+                        healthy: _isHealthyResult(result),
+                      ),
+                    ),
                   ),
                 ),
 
@@ -855,21 +870,6 @@ class _HeroComparisonSlider extends StatelessWidget {
       );
     }
 
-    if (result.inconclusive) {
-      // Clamp the blur at the edges; the default lets it fade to transparent,
-      // which showed the page colour as a halo around the photo.
-      return ClipRect(
-        child: ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(
-            sigmaX: 10,
-            sigmaY: 10,
-            tileMode: TileMode.clamp,
-          ),
-          child: imageWidget,
-        ),
-      );
-    }
-
     return imageWidget;
   }
 
@@ -905,9 +905,17 @@ class _HeroComparisonSlider extends StatelessWidget {
   }
 }
 
+/// True for a confident "Healthy" result (not inconclusive or no-dog).
+bool _isHealthyResult(ScreeningResult r) =>
+    !r.inconclusive &&
+    (r.condition.toLowerCase() == 'healthy' || r.urgency == Urgency.low);
+
 /// Shown in place of the heatmap slider when there is no heatmap to compare.
 class _HeatmapUnavailablePill extends StatelessWidget {
-  const _HeatmapUnavailablePill();
+  const _HeatmapUnavailablePill({this.healthy = false});
+
+  /// Healthy results have nothing to highlight; say that instead.
+  final bool healthy;
 
   @override
   Widget build(BuildContext context) {
@@ -917,15 +925,23 @@ class _HeatmapUnavailablePill extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.visibility_off_outlined, color: Colors.white, size: 16),
-          SizedBox(width: 8),
+          Icon(
+            healthy
+                ? Icons.check_circle_outline_rounded
+                : Icons.visibility_off_outlined,
+            color: Colors.white,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
           Flexible(
             child: Text(
-              'Heatmap not available for this scan',
-              style: TextStyle(
+              healthy
+                  ? 'No areas of concern to highlight'
+                  : 'Heatmap not available for this scan',
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -1377,15 +1393,40 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
   late double _percent;
   bool _showComparison = true;
 
+  /// Width / height of the photo, so the full view shows all of it.
+  double _aspect = 1.0;
+  ImageStream? _stream;
+  ImageStreamListener? _listener;
+
   @override
   void initState() {
     super.initState();
     _percent = widget.initialPercent;
+    final path = widget.result.imagePath;
+    if (path != null && File(path).existsSync()) {
+      final stream = FileImage(File(path)).resolve(ImageConfiguration.empty);
+      final listener = ImageStreamListener((info, _) {
+        final w = info.image.width, h = info.image.height;
+        if (mounted && w > 0 && h > 0) setState(() => _aspect = w / h);
+      });
+      stream.addListener(listener);
+      _stream = stream;
+      _listener = listener;
+    }
+  }
+
+  @override
+  void dispose() {
+    final s = _stream, l = _listener;
+    if (s != null && l != null) s.removeListener(l);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasHeat = widget.result.hasHeatmap && !widget.result.inconclusive;
+    final hasHeat = widget.result.hasHeatmap &&
+        !widget.result.inconclusive &&
+        !_isHealthyResult(widget.result);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1438,8 +1479,10 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
                 minScale: 1.0,
                 maxScale: 4.0,
                 child: Center(
+                  // The photo's own shape, so nothing is cropped; the heatmap
+                  // is rendered at the same proportions, so it lines up.
                   child: AspectRatio(
-                    aspectRatio: 1.0,
+                    aspectRatio: _aspect,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         return GestureDetector(
@@ -1462,7 +1505,7 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
                                   File(widget.result.imagePath!).existsSync())
                                 Image.file(
                                   File(widget.result.imagePath!),
-                                  fit: BoxFit.cover,
+                                  fit: BoxFit.fill,
                                 )
                               else
                                 Container(color: Colors.grey.shade900),
@@ -1473,7 +1516,7 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
                                   clipper: _HorizontalClipper(_percent),
                                   child: Image.memory(
                                     widget.result.heatmap!,
-                                    fit: BoxFit.cover,
+                                    fit: BoxFit.fill,
                                   ),
                                 ),
 
@@ -1497,9 +1540,11 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
             ),
 
             if (!hasHeat)
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: _HeatmapUnavailablePill(),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: _HeatmapUnavailablePill(
+                  healthy: _isHealthyResult(widget.result),
+                ),
               ),
 
             // Bottom tip
