@@ -51,6 +51,18 @@ class _CameraScreenState extends State<CameraScreen>
   int _lastDogCheck = 0;
   int _noDogStreak = 0;
   bool _liveNoDog = false;
+
+  // Tap to focus: where the ring is drawn (viewfinder coordinates), a counter
+  // that restarts its animation, and the timer back to normal auto-focus.
+  static const Duration _tapFocusHold = Duration(seconds: 5);
+  Offset? _focusRing;
+
+  // Front/back camera. The switch is hidden when the phone has only one.
+  CameraLensDirection _lens = CameraLensDirection.back;
+  bool _hasOtherCamera = false;
+  bool _switching = false;
+  int _focusTaps = 0;
+  Timer? _focusResetTimer;
   FlashMode _flashMode = FlashMode.off;
 
   Future<void> _toggleFlash() async {
@@ -129,6 +141,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void dispose() {
+    _focusResetTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _stopLiveQualityStream();
     _controller?.dispose();
@@ -145,6 +158,7 @@ class _CameraScreenState extends State<CameraScreen>
       // Not yet initialised (e.g. the permission prompt is showing): leave it.
       if (controller == null || !controller.value.isInitialized) return;
       _suspended = true;
+      _focusResetTimer?.cancel();
       _isStreaming = false;
       _controller = null;
       controller.dispose();
@@ -159,6 +173,7 @@ class _CameraScreenState extends State<CameraScreen>
         _frameIndex = 0;
         _rejectWarning = null;
         _clearLiveDogHint();
+        _focusRing = null;
         _flashMode = FlashMode.off; // a reopened camera starts with flash off
       });
     } else if (state == AppLifecycleState.resumed && _suspended) {
@@ -183,13 +198,15 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
 
-      final back = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
+      final chosen = cameras.firstWhere(
+        (c) => c.lensDirection == _lens,
         orElse: () => cameras.first,
       );
+      _hasOtherCamera =
+          cameras.any((c) => c.lensDirection != chosen.lensDirection);
 
       final controller = CameraController(
-        back,
+        chosen,
         ResolutionPreset.high,
         enableAudio: false,
         // ML Kit reads NV21 preview frames directly; NV21 keeps the
@@ -198,9 +215,13 @@ class _CameraScreenState extends State<CameraScreen>
       );
       await controller.initialize();
 
-      if (!mounted) return;
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
       setState(() {
         _controller = controller;
+        _lens = chosen.lensDirection;
         _ready = true;
       });
 
@@ -288,6 +309,91 @@ class _CameraScreenState extends State<CameraScreen>
         });
       }
     });
+  }
+
+  /// Focuses and meters on the tapped point. The preview is drawn with
+  /// BoxFit.cover, so the tap is mapped through that crop to the camera's own
+  /// 0..1 coordinates. After [_tapFocusHold] it returns to normal auto-focus.
+  Future<void> _onViewfinderTap(Offset local, Size box) async {
+    final controller = _controller;
+    if (controller == null || !_ready || _capturing) return;
+    final v = controller.value;
+    if (!v.isInitialized || !(v.focusPointSupported || v.exposurePointSupported)) {
+      return;
+    }
+    // Portrait preview size, as laid out in the viewfinder.
+    final pw = v.previewSize?.height ?? box.width;
+    final ph = v.previewSize?.width ?? box.height;
+    final scale = math.max(box.width / pw, box.height / ph);
+    final ox = (box.width - pw * scale) / 2;
+    final oy = (box.height - ph * scale) / 2;
+    final point = Offset(
+      ((local.dx - ox) / (pw * scale)).clamp(0.0, 1.0),
+      ((local.dy - oy) / (ph * scale)).clamp(0.0, 1.0),
+    );
+
+    setState(() {
+      _focusRing = local;
+      _focusTaps++;
+    });
+    try {
+      if (v.focusPointSupported) await controller.setFocusPoint(point);
+      if (v.exposurePointSupported) await controller.setExposurePoint(point);
+    } catch (_) {
+      // Unsupported on this device or camera closing: ignore the tap.
+    }
+
+    _focusResetTimer?.cancel();
+    _focusResetTimer = Timer(_tapFocusHold, _resetTapFocus);
+  }
+
+  /// Switches between the back and front camera. Ignored during a burst;
+  /// frames already taken in an unfinished burst are dropped, since they came
+  /// from the other camera.
+  Future<void> _switchCamera() async {
+    final old = _controller;
+    if (old == null || !_ready || _capturing || _switching || !_hasOtherCamera) {
+      return;
+    }
+    _switching = true;
+    _focusResetTimer?.cancel();
+    await _stopLiveQualityStream();
+    for (final p in _shots) {
+      try {
+        File(p).deleteSync();
+      } catch (_) {}
+    }
+    _shots.clear();
+    setState(() {
+      _ready = false;
+      _controller = null;
+      _frameIndex = 0;
+      _rejectWarning = null;
+      _focusRing = null;
+      _flashMode = FlashMode.off;
+      _clearLiveDogHint();
+      _lens = _lens == CameraLensDirection.back
+          ? CameraLensDirection.front
+          : CameraLensDirection.back;
+    });
+    await old.dispose();
+    await _start();
+    _switching = false;
+  }
+
+  /// Back to normal continuous auto-focus and exposure.
+  Future<void> _resetTapFocus() async {
+    final controller = _controller;
+    if (mounted) setState(() => _focusRing = null);
+    if (controller == null || !controller.value.isInitialized) return;
+    try {
+      if (controller.value.focusPointSupported) {
+        await controller.setFocusPoint(null);
+      }
+      if (controller.value.exposurePointSupported) {
+        await controller.setExposurePoint(null);
+      }
+    } catch (_) {}
   }
 
   void _clearLiveDogHint() {
@@ -479,16 +585,30 @@ class _CameraScreenState extends State<CameraScreen>
                           totalFrames: kTotalFrames,
                         ),
 
-                        // Right: Frame indication
-                        Text(
-                          'FRAME $_frameIndex / $kTotalFrames',
-                          style: const TextStyle(
-                            fontFamily: 'InstrumentSans',
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.2,
-                            color: Color(0xFF073858),
-                          ),
+                        // Right: the frame count, then flash
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'FRAME $_frameIndex/$kTotalFrames',
+                              style: const TextStyle(
+                                fontFamily: 'InstrumentSans',
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.2,
+                                color: Color(0xFF073858),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            _FlashButton(
+                              flashMode: _flashMode,
+                              onToggle: _toggleFlash,
+                              // Front cameras usually have no flash.
+                              enabled: !_capturing &&
+                                  _ready &&
+                                  _lens == CameraLensDirection.back,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -557,6 +677,31 @@ class _CameraScreenState extends State<CameraScreen>
                                   ),
                                 ),
                               ),
+
+                              // Tap to focus, with a ring where you tapped
+                              Positioned.fill(
+                                child: LayoutBuilder(
+                                  builder: (context, box) => GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTapUp: (d) => _onViewfinderTap(
+                                      d.localPosition,
+                                      box.biggest,
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                        if (_focusRing != null)
+                                          Positioned(
+                                            left: _focusRing!.dx - 32,
+                                            top: _focusRing!.dy - 32,
+                                            child: _FocusRing(
+                                              key: ValueKey(_focusTaps),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -622,10 +767,17 @@ class _CameraScreenState extends State<CameraScreen>
                           acceptedFrames: _frameIndex,
                         ),
                         const SizedBox(width: 32),
-                        _FlashButton(
-                          flashMode: _flashMode,
-                          onToggle: _toggleFlash,
-                          enabled: !_capturing && _ready,
+                        // Kept in place (just invisible) on one-camera phones,
+                        // so the shutter stays centred.
+                        Visibility(
+                          visible: _hasOtherCamera,
+                          maintainSize: true,
+                          maintainAnimation: true,
+                          maintainState: true,
+                          child: _SwitchCameraButton(
+                            onTap: _switchCamera,
+                            enabled: _ready && !_capturing,
+                          ),
                         ),
                       ],
                     ),
@@ -743,7 +895,8 @@ class _UploadButton extends StatelessWidget {
   }
 }
 
-/// Flash toggle button placed on the right side of the shutter.
+/// Flash toggle beside the frame count: just a small navy icon (amber when
+/// the torch is on), no background. The tap area stays 36 px.
 class _FlashButton extends StatelessWidget {
   const _FlashButton({
     required this.flashMode,
@@ -757,40 +910,37 @@ class _FlashButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const navy = Color(0xFF073858);
-    const amber = Color(0xFFD49339);
+    final (IconData icon, Color color, String label) = switch (flashMode) {
+      FlashMode.torch => (
+          Icons.flash_on_rounded,
+          const Color(0xFFDCA052),
+          'Flash: On',
+        ),
+      FlashMode.auto => (
+          Icons.flash_auto_rounded,
+          const Color(0xFF073858),
+          'Flash: Auto',
+        ),
+      _ => (Icons.flash_off_rounded, const Color(0xFF073858), 'Flash: Off'),
+    };
 
-    final IconData icon;
-    final Color color;
-    final String tooltip;
-
-    switch (flashMode) {
-      case FlashMode.torch:
-        icon = Icons.flash_on_rounded;
-        color = amber;
-        tooltip = 'Flash: On';
-        break;
-      case FlashMode.auto:
-        icon = Icons.flash_auto_rounded;
-        color = navy;
-        tooltip = 'Flash: Auto';
-        break;
-      case FlashMode.off:
-      default:
-        icon = Icons.flash_off_rounded;
-        color = navy;
-        tooltip = 'Flash: Off';
-        break;
-    }
-
-    return Opacity(
-      opacity: enabled ? 1.0 : 0.45,
-      child: IconButton(
-        onPressed: enabled ? onToggle : null,
-        icon: Icon(icon, color: color, size: 28),
-        padding: const EdgeInsets.all(8),
-        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-        tooltip: tooltip,
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onToggle : null,
+        child: SizedBox.square(
+          dimension: 36,
+          child: Center(
+            child: AnimatedOpacity(
+              opacity: enabled ? 1.0 : 0.35,
+              duration: const Duration(milliseconds: 200),
+              child: Icon(icon, size: 18, color: color),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1042,6 +1192,64 @@ class _ShutterState extends State<_Shutter> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Front/back camera switch in the bottom row, styled like the upload button.
+class _SwitchCameraButton extends StatelessWidget {
+  const _SwitchCameraButton({required this.onTap, required this.enabled});
+
+  final VoidCallback onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF073858);
+
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.45,
+      child: IconButton(
+        onPressed: enabled ? onTap : null,
+        icon: const Icon(Icons.switch_camera_outlined, color: navy, size: 28),
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        tooltip: 'Switch camera',
+      ),
+    );
+  }
+}
+
+/// Tap-to-focus ring in the viewfinder's amber: shrinks into place, holds,
+/// then fades.
+class _FocusRing extends StatelessWidget {
+  const _FocusRing({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 1400),
+        builder: (context, t, _) {
+          final settle = Curves.easeOutCubic.transform((t / 0.25).clamp(0.0, 1.0));
+          final fade = t < 0.7 ? 1.0 : 1.0 - (t - 0.7) / 0.3;
+          return Opacity(
+            opacity: fade.clamp(0.0, 1.0),
+            child: Transform.scale(
+              scale: 1.25 - 0.25 * settle,
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFDCA052), width: 2),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
