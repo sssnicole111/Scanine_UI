@@ -2,7 +2,8 @@
 //
 // What it does, in order (5.05 s in total):
 //   0.00 - 0.85 s  cloud background, settling and waiting on open before drawing starts
-//   0.85 - 2.55 s  "canine" draws itself stroke by stroke, centred on its own
+//   0.85 - 2.55 s  "canine" draws itself stroke by stroke, centred on its own; the c is the
+//                  Scanine logo, its five segments drawn like a c, then its centre dot pops
 //   2.60 - 3.48 s  a light grey scan line sweeps right to left, showing only inside the letters,
 //                  then prints the s while the word glides right to sit centred as "scanine"
 //   3.45 - 3.95 s  the tagline "scan + screen + care" fades in
@@ -72,6 +73,7 @@ const Color _scanLine = Color(0xFFDCE1EB); // the scan line: light grey
 const Color _scanWake = Color(
   0xFF8E99B0,
 ); // the wake behind it: a mid grey that fades back to navy
+const Color _logoGrey = Color(0xFFC5CAD6); // the logo's two grey segments
 const Color _taglineInk = Color(0xFF5A6A8C); // tagline words
 const Color _taglinePlus = Color(
   0x8C5A6A8C,
@@ -525,13 +527,22 @@ class _SplashPainter extends CustomPainter {
 
 /// One pen stroke of a letter, and when it is drawn.
 class _Stroke {
-  _Stroke(this.path, this.start, this.duration)
-    : metric = path.computeMetrics().first;
+  _Stroke(
+    this.path,
+    this.start,
+    this.duration, {
+    this.color = _ink,
+    this.width = 8,
+  }) : metric = path.computeMetrics().first;
 
   final Path path;
   final ui.PathMetric metric; // lets a stroke be drawn part of the way
   final double start;
   final double duration;
+
+  /// The colour the stroke settles into (the logo's top two segments stay grey).
+  final Color color;
+  final double width;
 }
 
 /// The lowercase "scanine" lettering. Built once, in its own units: x runs from the left edge of
@@ -545,9 +556,18 @@ class _Wordmark {
   static const double _bowl =
       15; // radius of the round letters, measured to the middle of the stroke
   static const double _middle = -19; // the middle of the letters' height
-  static const double _iconSize = 19.0;
   static const double _dotPop =
-      0.22; // how long the dot of the i takes to pop in
+      0.22; // how long a dot (the i's, the logo's) takes to pop in
+  static const double _iDotRadius = 4.6;
+
+  // The c is the Scanine logo, sized so its outer edge meets the top and bottom of the letters.
+  // Letters are squashed to _typeHeightScale, so the logo is built that much taller to stay round.
+  static const double _logoOuter = 19 * _typeHeightScale; // outer radius, on screen
+  static const double _logoStroke = 8 * 0.77; // 77% of a letter stroke
+  static const double _logoRadius =
+      _logoOuter - _logoStroke / 2; // to the middle of the stroke
+  static const double _logoDotRadius =
+      _logoRadius * 19.5 / 72; // the brand mark's proportion
 
   /// Where the baseline sits below the middle of the letters.
   static const double baseline = 19;
@@ -558,6 +578,8 @@ class _Wordmark {
   final List<List<_Stroke>> _letters = <List<_Stroke>>[];
   late final Offset _dotCentre;
   late final double _dotStart;
+  late final Offset _logoCentre;
+  late final double _logoDotStart;
   late final double _sRight; // right edge of the s
 
   /// Left edge of the finished word, with the word centred on x = 0.
@@ -614,18 +636,36 @@ class _Wordmark {
     }
     final double canineLeft = x;
 
-    // c: most of a circle, open on the right
+    // c: the Scanine logo. Its five segments are drawn in the order a pen draws a c (from the
+    // top right, round the left, to the bottom right); the top two settle grey, as in the brand
+    // mark. Gaps between segments grow with the thicker stroke so the five pieces stay distinct.
     {
-      final double cx = x + 4 + _bowl;
-      final Path path = Path()
-        ..arcTo(
-          Rect.fromCircle(center: Offset(cx, _middle), radius: _bowl),
-          _deg(-42),
-          _deg(-276),
-          true,
+      final double cx = x + _logoOuter;
+      _logoCentre = Offset(cx, _middle);
+      final Rect ring = Rect.fromCenter(
+        center: _logoCentre,
+        width: 2 * _logoRadius,
+        height: 2 * _logoRadius / _typeHeightScale,
+      );
+      final double gap = _logoStroke * 0.42 / _logoRadius; // radians
+      final double sweep = _deg(60) - gap;
+      const List<double> centres = <double>[301, 241, 181, 121, 61];
+      final List<_Stroke> segments = <_Stroke>[];
+      for (int i = 0; i < centres.length; i++) {
+        segments.add(
+          _Stroke(
+            Path()..arcTo(ring, _deg(centres[i]) + sweep / 2, -sweep, true),
+            startOf(1) + i * 0.09,
+            _strokeTime * 0.45,
+            color: i < 2 ? _logoGrey : _ink,
+            width: _logoStroke,
+          ),
         );
-      _letters.add(<_Stroke>[_Stroke(path, startOf(1), _strokeTime)]);
-      x += 4 + _bowl + _bowl * math.cos(_deg(42)) + 2.7 + 3;
+      }
+      _letters.add(segments);
+      _logoDotStart = startOf(1) + 0.55;
+      // Right edge of the logo's opening, then the same gap the c used to leave before the a.
+      x = cx + _logoOuter * math.cos(_deg(31) + gap / 2) + 2.7 + 3;
     }
 
     // a: the stem rises, then the bowl swings round from it
@@ -733,20 +773,21 @@ class _Wordmark {
             _lead2,
           );
         }
-        _trace(canvas, s, navy, _ink);
+        _trace(canvas, s, navy, s.color);
       }
       if (i == 0) {
         canvas.restore();
       }
     }
+    if (m >= _logoDotStart) {
+      final double pop = _softBack(
+        _seg(m, _logoDotStart, _logoDotStart + _dotPop),
+      );
+      _paintDot(canvas, _logoCentre, _logoDotRadius * pop, _ink);
+    }
     if (m >= _dotStart) {
       final double pop = _softBack(_seg(m, _dotStart, _dotStart + _dotPop));
-      _paintIcon(
-        canvas,
-        pop,
-        navyColor: _ink,
-        grayColor: const Color(0xFFC5CAD6),
-      );
+      _paintDot(canvas, _dotCentre, _iDotRadius * pop, _ink);
     }
   }
 
@@ -758,78 +799,23 @@ class _Wordmark {
         continue;
       }
       for (final _Stroke s in _letters[i]) {
-        canvas.drawPath(s.path, _pen);
+        canvas.drawPath(s.path, _pen..strokeWidth = s.width);
       }
       if (i == 0) {
         canvas.restore();
       }
     }
-    _paintIcon(
-      canvas,
-      1.0,
-      navyColor: color,
-      grayColor: color,
-      uniformColor: true,
-    );
+    _paintDot(canvas, _logoCentre, _logoDotRadius, color);
+    _paintDot(canvas, _dotCentre, _iDotRadius, color);
   }
 
-  /// Paints the official Scanine brand mark icon replacing the dot above the "i".
-  /// Consists of five separate outer C-shaped segments, a fixed navy center dot,
-  /// and a right-facing opening.
-  void _paintIcon(
-    Canvas canvas,
-    double pop, {
-    required Color navyColor,
-    required Color grayColor,
-    bool uniformColor = false,
-  }) {
-    if (pop <= 0.001) return;
-
-    final double size = _iconSize * pop;
-    final double arcRadius = size * (72.0 / 192.0);
-    final double strokeWidth = size * (24.0 / 192.0);
-    final double dotRadius = size * (19.5 / 192.0);
-
-    // Segment definitions (in degrees, clockwise from 3 o'clock):
-    // 1. Lower right: 35.0° -> 87.0° (sweep 52.0°)
-    // 2. Lower left:  95.0° -> 147.0° (sweep 52.0°)
-    // 3. Left:        155.0° -> 207.0° (sweep 52.0°)
-    // 4. Upper left:  215.0° -> 267.0° (sweep 52.0°)
-    // 5. Upper right: 275.0° -> 327.0° (sweep 52.0°)
-    const segmentAngles = [
-      (35.0, 52.0),
-      (95.0, 52.0),
-      (155.0, 52.0),
-      (215.0, 52.0),
-      (275.0, 52.0),
-    ];
-
-    final rect = Rect.fromCircle(center: Offset.zero, radius: arcRadius);
-
+  /// A round dot at [centre], kept round despite the letters' squashed height.
+  void _paintDot(Canvas canvas, Offset centre, double radius, Color color) {
+    if (radius <= 0.001) return;
     canvas.save();
-    canvas.translate(_dotCentre.dx, _dotCentre.dy);
-    // Counteract _typeHeightScale so the icon is rendered as a true circle
+    canvas.translate(centre.dx, centre.dy);
     canvas.scale(1.0, 1.0 / _typeHeightScale);
-
-    final strokePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.butt;
-
-    for (int i = 0; i < 5; i++) {
-      final isNavy = uniformColor || (i < 3);
-      strokePaint.color = isNavy ? navyColor : grayColor;
-      final (startDeg, sweepDeg) = segmentAngles[i];
-      final startRad = startDeg * (math.pi / 180.0);
-      final sweepRad = sweepDeg * (math.pi / 180.0);
-      canvas.drawArc(rect, startRad, sweepRad, false, strokePaint);
-    }
-
-    final dotPaint = Paint()
-      ..color = navyColor
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset.zero, dotRadius, dotPaint);
-
+    canvas.drawCircle(Offset.zero, radius, Paint()..color = color);
     canvas.restore();
   }
 
@@ -851,7 +837,12 @@ class _Wordmark {
     final Path path = progress >= 1
         ? s.path
         : s.metric.extractPath(0, s.metric.length * progress);
-    canvas.drawPath(path, _pen..color = color);
+    canvas.drawPath(
+      path,
+      _pen
+        ..color = color
+        ..strokeWidth = s.width,
+    );
   }
 }
 
