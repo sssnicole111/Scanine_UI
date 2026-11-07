@@ -1,14 +1,13 @@
 // scanine splash screen, as one self-contained Flutter widget. No packages needed.
 //
-// What it does, in order (5.05 s in total):
+// What it does, in order (5.20 s in total):
 //   0.00 - 0.85 s  cloud background, settling and waiting on open before drawing starts
-//   0.85 - 2.55 s  "canine" draws itself stroke by stroke, centred on its own; the c is the
-//                  Scanine logo, its five segments drawn like a c, then its centre dot pops
-//   2.60 - 3.48 s  a light grey scan line sweeps right to left, showing only inside the letters,
-//                  then prints the s while the word glides right to sit centred as "scanine"
-//   3.45 - 3.95 s  the tagline "scan + screen + care" fades in
-//   3.95 - 4.45 s  everything holds still for half a second
-//   4.45 - 4.80 s  the wordmark and tagline fade out, then onFinished is called
+//   0.85 - 2.70 s  "scanine" spells itself out stroke by stroke, centred, with a plain c
+//   2.75 - 3.60 s  a light grey scan line sweeps right to left, showing only inside the letters;
+//                  as it passes the c, the c becomes the Scanine logo and its centre dot pops
+//   3.60 - 4.10 s  the tagline "scan + screen + care" fades in
+//   4.10 - 4.60 s  everything holds still for half a second
+//   4.60 - 4.95 s  the wordmark and tagline fade out, then onFinished is called
 //
 // SETUP
 // 1. Copy this file into your project, for example lib/splash/scanine_splash.dart.
@@ -83,26 +82,24 @@ const Color _cloudHi = Color(0xFFF9FAFD); // a touch brighter in the middle
 const Color _cloudLo = Color(0xFFE6EAF2); // a touch deeper at the corners
 
 // ----- timing, on the motion's own clock (in seconds) -----
-const double _motionLength = 4.20;
+const double _motionLength = 4.35;
 const double _firstStroke =
-    0.85; // when the c starts drawing (calm pause after app opens)
+    0.85; // when the s starts drawing (calm pause after app opens)
 const double _perLetter =
     0.17; // delay from one letter to the next (smoother, more visible drawing)
 const double _strokeTime = 0.60; // how long one stroke takes to draw
 const double _echoLag =
     0.08; // delay between the pale copy, the mid copy and the navy stroke
-const double _sweepStart = 2.60; // the scan line enters at the e
-const double _sweepEnd = 3.45; // and leaves past the s
-const double _glideStart =
-    3.00; // the word glides to its final place while the s is printed
-const double _glideEnd = 3.48;
-const double _taglineStart = 3.45;
-const double _taglineEnd = 3.95;
+const double _sweepStart = 2.75; // the scan line enters at the e
+const double _sweepEnd = 3.60; // and leaves past the s
+const double _taglineStart = 3.60;
+const double _taglineEnd = 4.10;
 
 // ----- sizes, in design units (the design is 390 wide; the widget scales to fit the screen) -----
 const double _designWidth = 390;
 const double _typeHeightScale =
     0.91; // balanced typography height scale (not too tall, not shrinked)
+const double _letterStroke = 7.5; // pen width of the letters
 const double _slit = 7; // width of the scan line
 const double _wake = 84; // length of the wake behind it
 const double _taglineDrop =
@@ -141,7 +138,7 @@ class ScanineSplash extends StatefulWidget {
   final Duration fadeOut;
 
   /// Length of the motion itself, before the hold.
-  static const Duration motion = Duration(milliseconds: 4200);
+  static const Duration motion = Duration(milliseconds: 4350);
 
   @override
   State<ScanineSplash> createState() => _ScanineSplashState();
@@ -415,10 +412,8 @@ class _SplashPainter extends CustomPainter {
     final double on =
         _seg(m, _sweepStart, _sweepStart + 0.08) *
         (1 - _seg(m, _sweepEnd - 0.10, _sweepEnd));
-    // Left edge of the word. "canine" starts centred by itself and glides right as the s is printed.
-    final double wordX =
-        w.restX -
-        w.shift * (1 - _settle.transform(_seg(m, _glideStart, _glideEnd)));
+    // Left edge of the word, which stays centred throughout.
+    final double wordX = w.restX;
     // The scan line's position measured from the word's own left edge.
     final double cut = scanX - wordX;
 
@@ -532,7 +527,7 @@ class _Stroke {
     this.start,
     this.duration, {
     this.color = _ink,
-    this.width = 8,
+    this.width = _letterStroke,
   }) : metric = path.computeMetrics().first;
 
   final Path path;
@@ -546,7 +541,7 @@ class _Stroke {
 }
 
 /// The lowercase "scanine" lettering. Built once, in its own units: x runs from the left edge of
-/// the s, y = 0 is the baseline and up is negative. Letters are 38 tall with an 8 wide stroke.
+/// the s, y = 0 is the baseline and up is negative. Letters are 38 tall with a [_letterStroke] wide stroke.
 class _Wordmark {
   _Wordmark() {
     _build();
@@ -560,10 +555,11 @@ class _Wordmark {
       0.22; // how long a dot (the i's, the logo's) takes to pop in
   static const double _iDotRadius = 4.6;
 
-  // The c is the Scanine logo, sized so its outer edge meets the top and bottom of the letters.
-  // Letters are squashed to _typeHeightScale, so the logo is built that much taller to stay round.
-  static const double _logoOuter = 19 * _typeHeightScale; // outer radius, on screen
-  static const double _logoStroke = 8 * 0.77; // 77% of a letter stroke
+  // The c is the Scanine logo, built on the same oval as the round letters (a, e), so it is as
+  // wide and as tall as they are.
+  static const double _logoOuter =
+      _bowl + _letterStroke / 2; // outer radius, like the a and e
+  static const double _logoStroke = _letterStroke * 0.77; // 77% of a letter stroke
   static const double _logoRadius =
       _logoOuter - _logoStroke / 2; // to the middle of the stroke
   static const double _logoDotRadius =
@@ -579,21 +575,19 @@ class _Wordmark {
   late final Offset _dotCentre;
   late final double _dotStart;
   late final Offset _logoCentre;
-  late final double _logoDotStart;
-  late final double _sRight; // right edge of the s
 
-  /// Left edge of the finished word, with the word centred on x = 0.
+  /// The logo's five segments, shown where the scan line has passed (in place of the plain c).
+  final List<_Stroke> _logo = <_Stroke>[];
+
+  /// Left edge of the word, with the word centred on x = 0.
   late final double restX;
-
-  /// How far left of [restX] the word sits while only "canine" is showing, so that it is centred alone.
-  late final double shift;
 
   /// Where the scan line starts and ends.
   late final double scanFrom, scanTo;
 
   final Paint _pen = Paint()
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 8
+    ..strokeWidth = _letterStroke
     ..strokeCap = StrokeCap.butt
     ..strokeJoin = StrokeJoin.miter;
 
@@ -602,10 +596,9 @@ class _Wordmark {
 
   void _build() {
     double x = 0; // left edge of the next letter
-    double startOf(int letter) => _firstStroke + (letter - 1) * _perLetter;
+    double startOf(int letter) => _firstStroke + letter * _perLetter;
 
-    // s: two stacked ovals, drawn top to bottom in one stroke. It is not part of the opening
-    // draw (the scan line reveals it), so it starts "long ago" and is always complete.
+    // s: two stacked ovals, drawn top to bottom in one stroke.
     {
       const double rx = 10.5, ry = 7.5;
       final double cx = x + 4 + rx;
@@ -630,42 +623,50 @@ class _Wordmark {
           _deg(242),
           false,
         );
-      _letters.add(<_Stroke>[_Stroke(path, -9, _strokeTime * 1.1)]);
-      _sRight = 2 * rx + 8;
-      x += _sRight + 4;
+      _letters.add(<_Stroke>[_Stroke(path, startOf(0), _strokeTime * 1.1)]);
+      x += 2 * rx + 8 + 4;
     }
-    final double canineLeft = x;
 
-    // c: the Scanine logo. Its five segments are drawn in the order a pen draws a c (from the
-    // top right, round the left, to the bottom right); the top two settle grey, as in the brand
-    // mark. Gaps between segments grow with the thicker stroke so the five pieces stay distinct.
+    // c: drawn as a plain c, then turned into the Scanine logo by the scan line. Both share one
+    // centre; the logo has the same oval as the round letters, its top two segments grey as in
+    // the brand mark, and gaps that grow with its stroke so the five pieces stay distinct.
     {
       final double cx = x + _logoOuter;
       _logoCentre = Offset(cx, _middle);
-      final Rect ring = Rect.fromCenter(
+      _letters.add(<_Stroke>[
+        _Stroke(
+          Path()
+            ..arcTo(
+              Rect.fromCircle(center: _logoCentre, radius: _bowl),
+              _deg(-42),
+              _deg(-276),
+              true,
+            ),
+          startOf(1),
+          _strokeTime,
+        ),
+      ]);
+      final Rect ring = Rect.fromCircle(
         center: _logoCentre,
-        width: 2 * _logoRadius,
-        height: 2 * _logoRadius / _typeHeightScale,
+        radius: _logoRadius,
       );
       final double gap = _logoStroke * 0.42 / _logoRadius; // radians
       final double sweep = _deg(60) - gap;
       const List<double> centres = <double>[301, 241, 181, 121, 61];
-      final List<_Stroke> segments = <_Stroke>[];
       for (int i = 0; i < centres.length; i++) {
-        segments.add(
+        _logo.add(
           _Stroke(
             Path()..arcTo(ring, _deg(centres[i]) + sweep / 2, -sweep, true),
-            startOf(1) + i * 0.09,
-            _strokeTime * 0.45,
+            0,
+            0,
             color: i < 2 ? _logoGrey : _ink,
             width: _logoStroke,
           ),
         );
       }
-      _letters.add(segments);
-      _logoDotStart = startOf(1) + 0.55;
-      // Right edge of the logo's opening, then the same gap the c used to leave before the a.
-      x = cx + _logoOuter * math.cos(_deg(31) + gap / 2) + 2.7 + 3;
+      // Right edge of the logo's opening, then a slightly tighter gap than a c would leave, so
+      // the opening doesn't leave a hole before the a.
+      x = cx + _logoOuter * math.cos(_deg(31) + gap / 2) + 3.2;
     }
 
     // a: the stem rises, then the bowl swings round from it
@@ -717,8 +718,7 @@ class _Wordmark {
 
     final double width = x;
     restX = -width / 2;
-    shift = canineLeft / 2;
-    scanFrom = restX - shift + width + 4;
+    scanFrom = restX + width + 4;
     scanTo = restX - 8;
   }
 
@@ -750,11 +750,15 @@ class _Wordmark {
   }
 
   /// The wordmark at moment [m]: each stroke arrives as a pale copy, then a mid copy, then navy.
-  /// The s shows only to the right of [cut], which is where the scan line has already been.
+  /// Where the scan line has passed (right of [cut]) the c is the Scanine logo; ahead of it the
+  /// c is still a plain letter. The logo's centre dot pops as the line crosses it.
   void paintDrawing(Canvas canvas, double m, double cut) {
     for (int i = 0; i < _letters.length; i++) {
-      if (i == 0 && !_openS(canvas, cut)) {
-        continue;
+      final bool isC = i == 1;
+      if (isC) {
+        if (cut <= _logoCentre.dx - _logoOuter) continue; // fully replaced
+        canvas.save();
+        canvas.clipRect(Rect.fromLTRB(-1000, top, cut, bottom));
       }
       for (final _Stroke s in _letters[i]) {
         final double navyFrom = s.start + 2 * _echoLag;
@@ -775,14 +779,18 @@ class _Wordmark {
         }
         _trace(canvas, s, navy, s.color);
       }
-      if (i == 0) {
+      if (isC) {
         canvas.restore();
       }
     }
-    if (m >= _logoDotStart) {
-      final double pop = _softBack(
-        _seg(m, _logoDotStart, _logoDotStart + _dotPop),
-      );
+    if (cut < _logoCentre.dx + _logoOuter) {
+      canvas.save();
+      canvas.clipRect(Rect.fromLTRB(cut, top, 1000, bottom));
+      for (final _Stroke s in _logo) {
+        _trace(canvas, s, 1, s.color);
+      }
+      canvas.restore();
+      final double pop = _softBack(_seg(_logoCentre.dx - cut, 0, 22));
       _paintDot(canvas, _logoCentre, _logoDotRadius * pop, _ink);
     }
     if (m >= _dotStart) {
@@ -791,19 +799,17 @@ class _Wordmark {
     }
   }
 
-  /// The finished wordmark in one flat [color], with the s still cut off at [cut].
+  /// The finished wordmark (with the logo as its c) in one flat [color].
   void paintSolid(Canvas canvas, Color color, double cut) {
     _pen.color = color;
     for (int i = 0; i < _letters.length; i++) {
-      if (i == 0 && !_openS(canvas, cut)) {
-        continue;
-      }
+      if (i == 1) continue; // the plain c; the logo stands in for it
       for (final _Stroke s in _letters[i]) {
         canvas.drawPath(s.path, _pen..strokeWidth = s.width);
       }
-      if (i == 0) {
-        canvas.restore();
-      }
+    }
+    for (final _Stroke s in _logo) {
+      canvas.drawPath(s.path, _pen..strokeWidth = s.width);
     }
     _paintDot(canvas, _logoCentre, _logoDotRadius, color);
     _paintDot(canvas, _dotCentre, _iDotRadius, color);
@@ -817,17 +823,6 @@ class _Wordmark {
     canvas.scale(1.0, 1.0 / _typeHeightScale);
     canvas.drawCircle(Offset.zero, radius, Paint()..color = color);
     canvas.restore();
-  }
-
-  // Limits painting to the part of the s that the scan line has passed. Returns false, having
-  // changed nothing, when no part of the s is showing yet; otherwise the caller must restore.
-  bool _openS(Canvas canvas, double cut) {
-    if (cut >= _sRight + 1) {
-      return false;
-    }
-    canvas.save();
-    canvas.clipRect(Rect.fromLTRB(cut, top, _sRight + 1, bottom));
-    return true;
   }
 
   void _trace(Canvas canvas, _Stroke s, double progress, Color color) {
