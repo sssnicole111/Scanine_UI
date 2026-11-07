@@ -83,11 +83,19 @@ const int _kReducedHandoffMs = 400;
 const _cloudBg = Color(0xFFEEF1F6);
 const _navy = Color(0xFF203661);
 const _amber = Color(0xFFC77D1A);
-const _navyTint = Color(0x1A203661);
-const _amberTint = Color(0x29C77D1A);
 const _slate = Color(0xFF6B7090);
 
 const _thumbDecodeWidth = 120;
+
+/// Wording for a frame's chip, matching the result screen: the model only
+/// looks for ringworm, hot spot and flea allergy dermatitis, so a "Healthy"
+/// frame reads "No signs" rather than claiming the dog is healthy.
+@visibleForTesting
+String frameChipLabel(String label) => switch (label) {
+      'Healthy' => 'No signs',
+      'Hotspot' => 'Hot spot',
+      _ => label,
+    };
 
 enum _Stage { starting, classifying, heatmap, done }
 
@@ -895,15 +903,11 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       child: Container(
         width: width,
         padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 3),
-        decoration: BoxDecoration(
-          color: dissent ? _amberTint : _navyTint,
-          borderRadius: BorderRadius.circular(8),
-        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              r?.label ?? '—',
+              r == null ? '—' : frameChipLabel(r.label),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -934,7 +938,7 @@ class _AnalyzingScreenState extends State<AnalyzingScreen>
       final r = _thumbResults[i];
       if (r != null) {
         parts.add(
-            'Photo ${i + 1}: ${r.label}, ${(r.confidence * 100).round()} percent');
+            'Photo ${i + 1}: ${frameChipLabel(r.label)}, ${(r.confidence * 100).round()} percent');
       }
     }
     return parts.isEmpty

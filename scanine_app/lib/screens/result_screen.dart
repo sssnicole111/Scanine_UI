@@ -455,7 +455,10 @@ class _ResultConfig {
   factory _ResultConfig.fromResult(ScreeningResult result) {
     if (result.notDog) {
       return const _ResultConfig(
-        tag: 'No dog found',
+        // The headline already says no dog was found; the tag says what the
+        // photo can't show.
+        tag: 'Heatmap not available for this scan',
+        tagIcon: Icons.visibility_off_outlined,
         statusColor: _ResultTheme.amber,
         line1: 'We couldn’t find',
         line2: 'a dog',
@@ -771,10 +774,11 @@ class _HeroComparisonSlider extends StatelessWidget {
                 ),
               ],
 
-              // No heatmap: a centred pill on the photo, clear of the light
+              // No heatmap: centred text on the photo, clear of the light
               // bottom fade so the white text stays readable.
-              // (Inconclusive results say it in the tag under the photo.)
-              if (!_showHeatmap && !(result.inconclusive && !result.notDog))
+              // (Inconclusive and no-dog results say it in the tag under the
+              // photo instead.)
+              if (!_showHeatmap && !result.inconclusive && !result.notDog)
                 Positioned(
                   left: 24,
                   right: 24,
@@ -919,6 +923,22 @@ class _HeatmapUnavailablePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Healthy: plain text only, no pill or icon. A soft shadow keeps the
+    // white text readable on light photos.
+    if (healthy) {
+      return const Text(
+        'No areas of concern to highlight',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'InstrumentSans',
+          shadows: [Shadow(color: Color(0x99000000), blurRadius: 8)],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
@@ -928,20 +948,16 @@ class _HeatmapUnavailablePill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            healthy
-                ? Icons.check_circle_outline_rounded
-                : Icons.visibility_off_outlined,
+          const Icon(
+            Icons.visibility_off_outlined,
             color: Colors.white,
             size: 16,
           ),
           const SizedBox(width: 8),
-          Flexible(
+          const Flexible(
             child: Text(
-              healthy
-                  ? 'No areas of concern to highlight'
-                  : 'Heatmap not available for this scan',
-              style: const TextStyle(
+              'Heatmap not available for this scan',
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,

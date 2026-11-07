@@ -10,10 +10,12 @@ void main() {
     final result = ScreeningResult.noDog(imagePath: '/missing.jpg');
     await tester.pumpWidget(MaterialApp(home: ResultScreen(result: result)));
 
-    expect(find.text('No dog found'), findsOneWidget);
+    expect(find.text('No dog found'), findsNothing);
     expect(find.textContaining('a dog'), findsWidgets);
     expect(find.text('Choose another photo'), findsOneWidget);
+    // Said once, in the tag under the photo (not on the photo too).
     expect(find.text('Heatmap not available for this scan'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
     for (final condition in ['ringworm', 'a hot spot', 'flea allergy', 'Heatmap']) {
       expect(find.text(condition), findsNothing, reason: condition);
     }

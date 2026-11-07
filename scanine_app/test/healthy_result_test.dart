@@ -32,6 +32,16 @@ void main() {
     expect(find.textContaining('No signs of skin problems', findRichText: true),
         findsNothing);
     expect(find.text('No areas of concern to highlight'), findsOneWidget);
+    // Plain text: no check icon, no pill behind it.
+    expect(find.byIcon(Icons.check_circle_outline_rounded), findsNothing);
+    expect(
+      find.ancestor(
+        of: find.text('No areas of concern to highlight'),
+        matching: find.byWidgetPredicate(
+            (w) => w is Container && w.decoration != null),
+      ),
+      findsNothing,
+    );
     expect(find.text('Heatmap'), findsNothing);
   });
 
