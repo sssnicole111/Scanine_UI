@@ -102,9 +102,10 @@ class _CameraScreenState extends State<CameraScreen>
   String? _rejectWarning;
   final List<String> _shots = [];
 
-  // Inter-frame delay (ms). Per the paper, ~350 ms gives enough time for
-  // the camera shutter and hardware buffer to reset between frames while
-  // still capturing successive moments of a moving animal.
+  // Burst interval (ms): frames start at least this far apart. Per the paper,
+  // ~350 ms captures successive moments of a moving animal. Taking a photo
+  // usually takes longer than this on its own, so in practice there is no
+  // extra wait; on faster phones this keeps the frames from bunching up.
   static const int _interFrameMs = 350;
 
   // Live quality state (Focus & Light)
@@ -455,14 +456,46 @@ class _CameraScreenState extends State<CameraScreen>
     int accepted = _frameIndex;
     int attempted = 0;
 
+    // The dog check runs on the first good frame, alongside the rest of the
+    // burst instead of holding it up. A "no dog" answer stops the burst.
+    Future<SubjectAssessment>? dogCheck;
+    SubjectAssessment? dogResult;
+
+    Future<void> stopForNoDog() async {
+      for (final p in _shots) {
+        try {
+          await File(p).delete();
+        } catch (_) {}
+      }
+      _shots.clear();
+      if (mounted) {
+        setState(() {
+          _frameIndex = 0;
+          _rejectWarning = _burstNoDogHint;
+        });
+      }
+    }
+
+    // When the previous photo started, to keep frames _interFrameMs apart.
+    Stopwatch? sinceLastShot;
+
     try {
       // ── Burst: capture up to kTotalFrames good frames automatically ──
       // Each iteration tries to capture one frame. Frames that fail the
-      // Image Quality Gate are silently retried (up to 2 extra attempts
-      // per slot) rather than blocking on user confirmation, because
-      // animals move and waiting for manual retaps costs good frames.
+      // Image Quality Gate are silently retried rather than blocking on
+      // user confirmation, because animals move and waiting for manual
+      // retaps costs good frames.
       while (accepted < kTotalFrames) {
         if (!mounted || _suspended) return;
+        if (dogResult?.isNotDog ?? false) {
+          await stopForNoDog();
+          return;
+        }
+
+        final left = _interFrameMs - (sinceLastShot?.elapsedMilliseconds ?? _interFrameMs);
+        if (left > 0) await Future<void>.delayed(Duration(milliseconds: left));
+        if (!mounted || _suspended) return;
+        sinceLastShot = Stopwatch()..start();
 
         String shotPath;
         if (controller != null && _ready) {
@@ -489,27 +522,13 @@ class _CameraScreenState extends State<CameraScreen>
             });
           }
 
-          // Give the animal/user a moment to re-stabilise before the
-          // next automatic capture attempt (paper: ~350 ms burst interval)
-          await Future<void>.delayed(
-            const Duration(milliseconds: _interFrameMs),
-          );
           continue;
         }
 
-        // Dog check once per burst, on the first good frame: a clear
-        // non-dog scene restarts the burst instead of screening it.
-        if (_shots.isEmpty && controller != null && _ready) {
-          final subject = await SubjectCheck.assessFile(shotPath);
-          if (subject.isNotDog) {
-            try {
-              await File(shotPath).delete();
-            } catch (_) {}
-            if (mounted) {
-              setState(() => _rejectWarning = _burstNoDogHint);
-            }
-            return;
-          }
+        if (_shots.isEmpty && dogCheck == null && controller != null && _ready) {
+          final firstPath = shotPath;
+          dogCheck = SubjectCheck.assessFile(firstPath)
+            ..then((a) => dogResult = a);
         }
 
         // Frame passed the quality gate
@@ -524,10 +543,14 @@ class _CameraScreenState extends State<CameraScreen>
         }
 
         if (accepted >= kTotalFrames) break;
+      }
 
-        // Short inter-frame pause to let the hardware buffer reset and
-        // capture a meaningfully different moment (~350 ms, per paper)
-        await Future<void>.delayed(const Duration(milliseconds: _interFrameMs));
+      // Every frame is in; screen only if the dog check agrees.
+      final dog = dogResult ?? await dogCheck;
+      if (!mounted || _suspended) return;
+      if (dog?.isNotDog ?? false) {
+        await stopForNoDog();
+        return;
       }
 
       // ── All frames collected — proceed to analysis ──────────────

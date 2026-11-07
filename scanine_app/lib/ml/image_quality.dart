@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
@@ -103,6 +104,9 @@ class QualityGate {
   static const QualityThresholds defaultThresholds = QualityThresholds();
 
   /// Assesses a captured image file from disk.
+  ///
+  /// Decodes with the platform's own image decoder (fast, and off the UI
+  /// thread), then measures the same centre patch as [assessDecodedImage].
   static Future<QualityAssessment> assessFile(
     String filePath, {
     QualityThresholds thresholds = defaultThresholds,
@@ -113,15 +117,73 @@ class QualityGate {
         return QualityAssessment.checking;
       }
       final bytes = await file.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) {
-        return QualityAssessment.checking;
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      final image = frame.image;
+      try {
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        if (data == null) {
+          return QualityAssessment.checking;
+        }
+        return assessRgba(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          image.width,
+          image.height,
+          thresholds: thresholds,
+        );
+      } finally {
+        image.dispose();
       }
-
-      return assessDecodedImage(decoded, thresholds: thresholds);
     } catch (_) {
       return QualityAssessment.checking;
     }
+  }
+
+  /// Assesses raw RGBA pixels ([width] x [height], 4 bytes per pixel), using
+  /// the same centre patch and maths as [assessDecodedImage].
+  static QualityAssessment assessRgba(
+    Uint8List rgba,
+    int width,
+    int height, {
+    QualityThresholds thresholds = defaultThresholds,
+  }) {
+    const sampleSize = 160;
+    final startX = math.max(0, (width - sampleSize) ~/ 2);
+    final startY = math.max(0, (height - sampleSize) ~/ 2);
+    final actualW = math.min(sampleSize, width - startX);
+    final actualH = math.min(sampleSize, height - startY);
+
+    if (actualW < 4 || actualH < 4) {
+      return QualityAssessment.checking;
+    }
+
+    final grid = List.generate(
+      actualH,
+      (y) => Float32List(actualW),
+      growable: false,
+    );
+
+    double sumLuminance = 0.0;
+    final totalPixels = actualW * actualH;
+
+    for (int y = 0; y < actualH; y++) {
+      final row = (startY + y) * width;
+      for (int x = 0; x < actualW; x++) {
+        final i = (row + startX + x) * 4;
+        // Standard Rec. 601 luminance
+        final lum = 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+        grid[y][x] = lum;
+        sumLuminance += lum;
+      }
+    }
+
+    final meanIntensity = sumLuminance / totalPixels;
+    final lapVariance = _computeLaplacianVariance(grid, actualW, actualH);
+
+    return _evaluate(lapVariance, meanIntensity, thresholds);
   }
 
   /// Assesses an [img.Image] decoded in memory.
