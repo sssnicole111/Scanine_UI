@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -218,9 +220,7 @@ class ScanineHomeScreen extends StatelessWidget {
             // Decorative silhouette extends edge-to-edge behind the notch and status bar.
             Positioned.fill(
               child: IgnorePointer(
-                child: ExcludeSemantics(
-                  child: CustomPaint(painter: _DogSilhouettePainter()),
-                ),
+                child: ExcludeSemantics(child: _TiltingDogSilhouette()),
               ),
             ),
 
@@ -379,13 +379,115 @@ class _ScreeningButton extends StatelessWidget {
   }
 }
 
+/// The silhouette with a slow head tilt (the nose lifts about 2.6° and
+/// settles, every 6 s) and a quick ear flick about every 5.5 s. Still when the
+/// system asks for reduced motion.
+class _TiltingDogSilhouette extends StatefulWidget {
+  const _TiltingDogSilhouette();
+
+  @override
+  State<_TiltingDogSilhouette> createState() => _TiltingDogSilhouetteState();
+}
+
+class _TiltingDogSilhouetteState extends State<_TiltingDogSilhouette>
+    with TickerProviderStateMixin {
+  late final AnimationController _tilt = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 3),
+  );
+  late final Animation<double> _eased = CurvedAnimation(
+    parent: _tilt,
+    curve: Curves.easeInOut,
+  );
+
+  // Ear: rests most of the cycle, then flicks back (-5°), overshoots a little
+  // (+1.5°) and settles, all within about half a second.
+  late final AnimationController _earCycle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 5500),
+  );
+  late final Animation<double> _ear = TweenSequence<double>([
+    TweenSequenceItem(tween: ConstantTween(0), weight: 86),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: -5.0,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 3,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: -5.0,
+        end: 1.5,
+      ).chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 3,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.5,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 3,
+    ),
+    TweenSequenceItem(tween: ConstantTween(0), weight: 5),
+  ]).animate(_earCycle);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _tilt
+        ..stop()
+        ..value = 0;
+      _earCycle
+        ..stop()
+        ..value = 0;
+    } else {
+      if (!_tilt.isAnimating) _tilt.repeat(reverse: true);
+      if (!_earCycle.isAnimating) _earCycle.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _tilt.dispose();
+    _earCycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: _DogSilhouettePainter(tilt: _eased, earDegrees: _ear),
+      ),
+    );
+  }
+}
+
 /// Vector silhouette: no image asset required.
 /// Coordinates use a 390 × 844 design canvas.
 class _DogSilhouettePainter extends CustomPainter {
+  _DogSilhouettePainter({required this.tilt, required this.earDegrees})
+    : super(repaint: Listenable.merge([tilt, earDegrees]));
+
+  /// 0 = resting, 1 = nose fully lifted.
+  final Animation<double> tilt;
+
+  /// Ear rotation in degrees around its root (0 = resting).
+  final Animation<double> earDegrees;
+
+  /// Largest lift, in radians (about 2.6°).
+  static const double _maxTilt = 0.045;
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.scale(size.width / 390, size.height / 844);
+    // Tilt around the base of the neck, so the nose lifts and settles.
+    canvas.translate(300, 690);
+    canvas.rotate(-_maxTilt * tilt.value);
+    canvas.translate(-300, -690);
 
     final body = Path()
       // Forehead and crown.
@@ -397,8 +499,12 @@ class _DogSilhouettePainter extends CustomPainter {
       ..lineTo(370, 456)
       ..lineTo(365, 452)
       ..cubicTo(371, 479, 383, 499, 399, 513)
-      // Shoulder continues beyond the right edge.
-      ..lineTo(410, 747)
+      // Shoulder continues well beyond the right and bottom edges, so the
+      // tilt never swings an edge into view. Below y 747 the gradient is the
+      // page colour, so the extra area is invisible.
+      ..lineTo(480, 520)
+      ..lineTo(480, 920)
+      ..lineTo(241, 920)
       ..lineTo(241, 747)
       ..cubicTo(238, 711, 217, 688, 212, 656)
       ..cubicTo(207, 630, 210, 609, 210, 590)
@@ -439,11 +545,18 @@ class _DogSilhouettePainter extends CustomPainter {
       ..cubicTo(215, 439, 247, 401, 231, 357)
       ..close();
 
+    // Flick around the ear's root, at the top of the head.
+    canvas.save();
+    canvas.translate(236, 360);
+    canvas.rotate(earDegrees.value * math.pi / 180);
+    canvas.translate(-236, -360);
     canvas.drawPath(ear, Paint()..color = const Color(0xFFE0EDF6));
+    canvas.restore();
 
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _DogSilhouettePainter oldDelegate) => false;
+  bool shouldRepaint(covariant _DogSilhouettePainter oldDelegate) =>
+      oldDelegate.tilt != tilt || oldDelegate.earDegrees != earDegrees;
 }
