@@ -5,12 +5,16 @@
 // the Scanine model, which is not touched.
 //
 // Three verdicts, so a close-up the labeler can't place is never blocked:
-//   dog     – "Dog" label at or above [SubjectThresholds.dogKeep]
-//   notDog  – no confident "Dog", and a clear non-dog scene/object label
+//   dog     – "Dog" label at or above [SubjectThresholds.dogKeep], unless the
+//             photo is clearly a human face
+//   notDog  – a human face; or, with no confident "Dog": human body or bare
+//             human skin, a clear non-dog scene/object, or knitted fabric
 //   unsure  – anything else (continue as normal)
 //
-// Thresholds from the on-phone evaluation (854 dog / 148 not-dog photos):
-// 1.5% of dog photos rejected, 49% of not-dog photos caught, 5.5% unsure.
+// Thresholds from the on-phone evaluation: 854 dog photos, 148 COCO not-dog
+// photos, 226 computer-lab objects/fabrics and 120 human skin close-ups
+// (SCIN). 2.2% of dog photos rejected (all of them Healthy), 51% of the COCO
+// photos, 73% of the lab photos and 88% of the human skin caught.
 
 import 'dart:ui' show Size;
 
@@ -30,7 +34,9 @@ class SubjectThresholds {
 }
 
 /// ML Kit labels that clearly mean "not a dog's skin". "Cat" and "Fur" are
-/// deliberately absent: ML Kit gives both to close-ups of dog fur.
+/// deliberately absent: ML Kit gives both to close-ups of dog fur. Clothing
+/// words ("Jacket", "Jeans", "Textile") are absent too: ML Kit uses them for
+/// dog coats.
 const Set<String> nonDogLabels = {
   'Food', 'Tableware', 'Cuisine', 'Meal', 'Fast food', 'Vegetable', 'Fruit',
   'Dessert', 'Drink', 'Room', 'Desk', 'Chair', 'Couch', 'Bed', 'Building',
@@ -40,7 +46,53 @@ const Set<String> nonDogLabels = {
   'Screenshot', 'Cool', 'Crowd', 'Team', 'Sky', 'Bridge', 'Road', 'Shelf',
   'Kitchen', 'Bathroom', 'Pizza', 'Cake', 'Bread', 'Christmas', 'Umbrella',
   'Surfboard', 'Skateboard', 'Skiing',
+  // Computer-lab objects (no dataset dog photo carries these at 0.55).
+  'Bag', 'Handbag', 'Leather', 'Mobile phone', 'Poster', 'Paper', 'Metal',
+  'Tie', 'Flag', 'Wheel', 'Bumper', 'Helmet', 'Goggles', 'Jersey', 'Shorts',
 };
+
+/// Human face labels. At or above [faceReject] they reject even when ML Kit
+/// also says "Dog" (a face can reach "Dog" 0.6); no dataset dog photo does.
+const Set<String> faceLabels = {'Selfie', 'Smile', 'Mouth'};
+const double faceReject = 0.80;
+
+/// Human body labels: reject at [bodyReject] when "Dog" isn't confident.
+const Set<String> bodyLabels = {
+  'Hand',
+  'Nail',
+  'Finger',
+  'Tattoo',
+  'Muscle',
+  'Foot',
+  'Toe',
+};
+const double bodyReject = 0.70;
+
+/// Bare human skin: "Skin" at [bareSkin] with "Flesh" at [bareFlesh], no
+/// confident "Dog" and no coat label. A dog lesion close-up almost always
+/// also gets "Dog" or a [coatLabels] label, so it still passes.
+const double bareSkin = 0.85;
+const double bareFlesh = 0.50;
+
+/// Labels that point to an animal coat; any at [coatSeen] keeps a "Skin"
+/// photo from counting as bare human skin.
+const Set<String> coatLabels = {
+  'Fur',
+  'Hair',
+  'Wool',
+  'Whiskers',
+  'Beard',
+  'Cat',
+  'Pet',
+  'Horse',
+};
+const double coatSeen = 0.55;
+
+/// Knitted fabric (towels, sweaters). Only rejects when "Dog" is below
+/// [knitMaxDog], since ML Kit sometimes calls a woolly coat "Knitting".
+const Set<String> knitLabels = {'Knitting', 'Wool', 'Crochet', 'Needlework'};
+const double knitReject = 0.60;
+const double knitMaxDog = 0.30;
 
 class SubjectAssessment {
   const SubjectAssessment(this.verdict, {this.dogScore = 0, this.otherLabel});
@@ -60,22 +112,53 @@ class SubjectAssessment {
     Iterable<(String, double)> labels, {
     SubjectThresholds thresholds = const SubjectThresholds(),
   }) {
-    var dog = 0.0;
-    String? other;
-    var otherScore = 0.0;
+    final scores = <String, double>{};
     for (final (label, score) in labels) {
-      if (label == 'Dog' && score > dog) dog = score;
-      if (nonDogLabels.contains(label) && score > otherScore) {
-        other = label;
-        otherScore = score;
-      }
+      if (score > (scores[label] ?? 0)) scores[label] = score;
     }
+    double of(String label) => scores[label] ?? 0;
+
+    /// The strongest label from [set] at or above [min], or null.
+    String? strongest(Set<String> set, double min) {
+      String? best;
+      for (final l in set) {
+        if (of(l) >= min && (best == null || of(l) > of(best))) best = l;
+      }
+      return best;
+    }
+
+    final dog = of('Dog');
+    SubjectAssessment reject(String label) => SubjectAssessment(
+      SubjectVerdict.notDog,
+      dogScore: dog,
+      otherLabel: label,
+    );
+
+    // A clear human face rejects even next to a "Dog" label.
+    final face = strongest(faceLabels, faceReject);
+    if (face != null) return reject(face);
+
     if (dog >= thresholds.dogKeep) {
       return SubjectAssessment(SubjectVerdict.dog, dogScore: dog);
     }
-    if (otherScore >= thresholds.otherReject) {
-      return SubjectAssessment(SubjectVerdict.notDog, dogScore: dog, otherLabel: other);
+
+    final body = strongest(bodyLabels, bodyReject);
+    if (body != null) return reject(body);
+
+    if (of('Skin') >= bareSkin &&
+        of('Flesh') >= bareFlesh &&
+        strongest(coatLabels, coatSeen) == null) {
+      return reject('Skin');
     }
+
+    final other = strongest(nonDogLabels, thresholds.otherReject);
+    if (other != null) return reject(other);
+
+    if (dog < knitMaxDog) {
+      final knit = strongest(knitLabels, knitReject);
+      if (knit != null) return reject(knit);
+    }
+
     return SubjectAssessment(SubjectVerdict.unsure, dogScore: dog);
   }
 }
