@@ -65,6 +65,18 @@ class _CameraScreenState extends State<CameraScreen>
   Timer? _focusResetTimer;
   FlashMode _flashMode = FlashMode.off;
 
+  // Pinch to zoom. Capped at [_zoomCap]: past that, phone zoom is mostly
+  // digital and only makes frames blurrier for the quality gate. The readout
+  // shows while pinching and fades shortly after.
+  static const double _zoomCap = 4.0;
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _zoom = 1.0;
+  double _zoomAtPinchStart = 1.0;
+  bool _zoomBusy = false;
+  bool _showZoom = false;
+  Timer? _zoomHideTimer;
+
   Future<void> _toggleFlash() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     try {
@@ -143,6 +155,7 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     _focusResetTimer?.cancel();
+    _zoomHideTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _stopLiveQualityStream();
     _controller?.dispose();
@@ -216,6 +229,13 @@ class _CameraScreenState extends State<CameraScreen>
       );
       await controller.initialize();
 
+      // A freshly opened camera starts at its widest zoom.
+      var minZoom = 1.0, maxZoom = 1.0;
+      try {
+        minZoom = await controller.getMinZoomLevel();
+        maxZoom = math.min(await controller.getMaxZoomLevel(), _zoomCap);
+      } catch (_) {}
+
       if (!mounted) {
         controller.dispose();
         return;
@@ -224,6 +244,10 @@ class _CameraScreenState extends State<CameraScreen>
         _controller = controller;
         _lens = chosen.lensDirection;
         _ready = true;
+        _minZoom = minZoom;
+        _maxZoom = math.max(minZoom, maxZoom);
+        _zoom = minZoom;
+        _showZoom = false;
       });
 
       _startLiveQualityStream();
@@ -315,6 +339,53 @@ class _CameraScreenState extends State<CameraScreen>
   /// Focuses and meters on the tapped point. The preview is drawn with
   /// BoxFit.cover, so the tap is mapped through that crop to the camera's own
   /// 0..1 coordinates. After [_tapFocusHold] it returns to normal auto-focus.
+  void _onPinchStart(ScaleStartDetails d) {
+    _zoomAtPinchStart = _zoom;
+  }
+
+  /// Two-finger pinch zooms; one finger does nothing (taps still focus).
+  /// Zoom is fixed during a burst so all five frames match.
+  void _onPinchUpdate(ScaleUpdateDetails d) {
+    final controller = _controller;
+    if (d.pointerCount < 2 || controller == null || !_ready || _capturing) {
+      return;
+    }
+    if (_maxZoom <= _minZoom) return;
+    final next = (_zoomAtPinchStart * d.scale).clamp(_minZoom, _maxZoom);
+    if ((next - _zoom).abs() < 0.01) return;
+    _zoomHideTimer?.cancel();
+    setState(() {
+      _zoom = next;
+      _showZoom = true;
+    });
+    _applyZoom();
+  }
+
+  void _onPinchEnd(ScaleEndDetails d) {
+    if (!_showZoom) return;
+    _zoomHideTimer?.cancel();
+    _zoomHideTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _showZoom = false);
+    });
+  }
+
+  /// Sends the latest zoom to the camera, one call at a time; any pinch
+  /// updates that arrive meanwhile are folded into the next call.
+  Future<void> _applyZoom() async {
+    if (_zoomBusy) return;
+    _zoomBusy = true;
+    try {
+      double sent;
+      do {
+        sent = _zoom;
+        await _controller?.setZoomLevel(sent);
+      } while (mounted && (sent - _zoom).abs() >= 0.01);
+    } catch (_) {
+    } finally {
+      _zoomBusy = false;
+    }
+  }
+
   Future<void> _onViewfinderTap(Offset local, Size box) async {
     final controller = _controller;
     if (controller == null || !_ready || _capturing) return;
@@ -710,8 +781,42 @@ class _CameraScreenState extends State<CameraScreen>
                                       d.localPosition,
                                       box.biggest,
                                     ),
+                                    onScaleStart: _onPinchStart,
+                                    onScaleUpdate: _onPinchUpdate,
+                                    onScaleEnd: _onPinchEnd,
                                     child: Stack(
                                       children: [
+                                        // Zoom level while pinching: plain
+                                        // white text, no background.
+                                        Positioned(
+                                          top: 30,
+                                          left: 0,
+                                          right: 0,
+                                          child: IgnorePointer(
+                                            child: AnimatedOpacity(
+                                              opacity: _showZoom ? 1 : 0,
+                                              duration: const Duration(
+                                                milliseconds: 250,
+                                              ),
+                                              child: Text(
+                                                '${_zoom.toStringAsFixed(1)}×',
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  fontFamily: 'InstrumentSans',
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                  shadows: [
+                                                    Shadow(
+                                                      color: Color(0x80000000),
+                                                      blurRadius: 6,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                         if (_focusRing != null)
                                           Positioned(
                                             left: _focusRing!.dx - 32,
