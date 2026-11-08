@@ -1,6 +1,6 @@
 {
-  "run": "20261029_1757_mnv3s_baseline_seed42",
-  "architecture": "mnv3s_baseline",
+  "run": "20261029_1846_mnv3s_ca_passthrough_seed42",
+  "architecture": "mnv3s_ca_passthrough",
   "classes": [
     "Ringworm",
     "Hotspot",
@@ -40,91 +40,91 @@
     }
   },
   "test": {
-    "accuracy": 0.9386973180076629,
-    "precision_macro": 0.9336833315566926,
-    "recall_macro": 0.931628397805828,
-    "f1_macro": 0.9322634492158668,
-    "auc_macro_ovr": 0.9904962420862946,
+    "accuracy": 0.9080459770114943,
+    "precision_macro": 0.9038770053475936,
+    "recall_macro": 0.898420134994596,
+    "f1_macro": 0.8993878232816488,
+    "auc_macro_ovr": 0.9819707245874096,
     "ci95": {
       "accuracy": [
-        0.9080459770114943,
-        0.9655172413793104
+        0.8697318007662835,
+        0.9425287356321839
       ],
       "macro_precision": [
-        0.9009850799220956,
-        0.9630350540785418
+        0.8654386790931027,
+        0.9394977048448439
       ],
       "macro_recall": [
-        0.896267528674433,
-        0.9614659797217572
+        0.8573833007593278,
+        0.9362182537030664
       ],
       "macro_auc": [
-        0.982859044143931,
-        0.9959650922692037
+        0.970124432466937,
+        0.9919320719297189
       ]
     },
     "per_class": {
       "Ringworm": {
         "n": 57,
-        "precision": 0.8814,
+        "precision": 0.8,
         "recall": 0.9123,
-        "f1": 0.8966,
-        "auc": 0.9865
+        "f1": 0.8525,
+        "auc": 0.9741
       },
       "Hotspot": {
         "n": 58,
-        "precision": 0.9322,
-        "recall": 0.9483,
-        "f1": 0.9402,
-        "auc": 0.9915
+        "precision": 0.9273,
+        "recall": 0.8793,
+        "f1": 0.9027,
+        "auc": 0.9901
       },
       "FAD": {
         "n": 57,
-        "precision": 0.9434,
-        "recall": 0.8772,
-        "f1": 0.9091,
-        "auc": 0.9842
+        "precision": 0.9216,
+        "recall": 0.8246,
+        "f1": 0.8704,
+        "auc": 0.9656
       },
       "Healthy": {
         "n": 89,
-        "precision": 0.9778,
-        "recall": 0.9888,
-        "f1": 0.9832,
-        "auc": 0.9998
+        "precision": 0.9667,
+        "recall": 0.9775,
+        "f1": 0.9721,
+        "auc": 0.9981
       }
     }
   },
   "healthy_photo_type_check": null,
-  "temperature": 1.3141106505882048,
-  "suggested_confidence_threshold": 0.4,
+  "temperature": 1.7076734979857358,
+  "suggested_confidence_threshold": 0.7,
   "target_selective_accuracy": 0.95,
   "tflite": {
     "fp32": {
-      "size_mb": 3.760748,
-      "accuracy": 0.9386973180076629,
-      "macro_auc": 0.9904962420862946,
+      "size_mb": 2.321064,
+      "accuracy": 0.9080459770114943,
+      "macro_auc": 0.9819707245874096,
       "agreement_with_keras": 1.0,
-      "max_prob_diff": 6.9141387939453125e-06,
-      "mean_gradcam_diff": 6.358754944812972e-07,
-      "colab_cpu_ms_per_image": 2.3792600631713867
+      "max_prob_diff": 8.881092071533203e-06,
+      "mean_gradcam_diff": 6.315412974799983e-07,
+      "colab_cpu_ms_per_image": 2.5766706466674805
     },
     "fp16": {
-      "size_mb": 1.938048,
-      "accuracy": 0.9386973180076629,
-      "macro_auc": 0.9903887429462878,
+      "size_mb": 1.236828,
+      "accuracy": 0.9080459770114943,
+      "macro_auc": 0.9819549264618856,
       "agreement_with_keras": 1.0,
-      "max_prob_diff": 0.01030588150024414,
-      "mean_gradcam_diff": 0.0007548453286290169,
-      "colab_cpu_ms_per_image": 2.2088003158569336
+      "max_prob_diff": 0.024956345558166504,
+      "mean_gradcam_diff": 0.0013749217614531517,
+      "colab_cpu_ms_per_image": 2.578110694885254
     },
     "int8_dynamic": {
-      "size_mb": 1.131112,
-      "accuracy": 0.9386973180076629,
-      "macro_auc": 0.99032770929153,
-      "agreement_with_keras": 0.9961685823754789,
-      "max_prob_diff": 0.3236998915672302,
-      "mean_gradcam_diff": 0.03414452448487282,
-      "colab_cpu_ms_per_image": 4.673275947570801
+      "size_mb": 0.82808,
+      "accuracy": 0.8773946360153256,
+      "macro_auc": 0.9774610667227743,
+      "agreement_with_keras": 0.9540229885057471,
+      "max_prob_diff": 0.5349588990211487,
+      "mean_gradcam_diff": 0.04555265232920647,
+      "colab_cpu_ms_per_image": 5.209026336669922
     }
   },
   "tflite_io": {
@@ -174,7 +174,7 @@
       "test": 0.15
     },
     "DUP_HAMMING": 6,
-    "USE_CA": false,
+    "USE_CA": true,
     "DROPOUT": 0.3,
     "BATCH_SIZE": 32,
     "STAGE1_EPOCHS": 20,
@@ -189,7 +189,7 @@
   },
   "epochs_trained": {
     "stage1": 20,
-    "stage2": 34
+    "stage2": 52
   },
   "versions": {
     "tensorflow": "2.21.0",
