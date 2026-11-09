@@ -8,7 +8,8 @@
 //   dog     – "Dog" label at or above [SubjectThresholds.dogKeep], unless the
 //             photo is clearly a human face
 //   notDog  – a human face; or, with no confident "Dog": human body or bare
-//             human skin, a clear non-dog scene/object, or knitted fabric
+//             human skin, a clear non-dog scene/object, knitted fabric, or a
+//             photo mostly in strong green/blue/purple (fabric, posters)
 //   unsure  – anything else (continue as normal)
 //
 // Thresholds from the on-phone evaluation: 854 dog photos, 148 COCO not-dog
@@ -16,6 +17,9 @@
 // (SCIN). 2.2% of dog photos rejected (all of them Healthy), 51% of the COCO
 // photos, 73% of the lab photos and 88% of the human skin caught.
 
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui show ImageByteFormat, instantiateImageCodec;
 import 'dart:ui' show Size;
 
 import 'package:camera/camera.dart';
@@ -94,6 +98,46 @@ const Set<String> knitLabels = {'Knitting', 'Wool', 'Crochet', 'Needlework'};
 const double knitReject = 0.60;
 const double knitMaxDog = 0.30;
 
+/// Strong green, blue or purple: no dog's skin or coat is this colour, but
+/// fabric, posters and screens often are. A photo with more than
+/// [vividReject] of its pixels in these colours, and no confident "Dog",
+/// rejects. On the 854 dataset dog photos, every one above 0.30 also has
+/// "Dog" at 0.5 or more (dogs on grass), so none is blocked.
+const double vividReject = 0.30;
+
+/// True for one pixel in strong green/blue/purple: OpenCV HSV hue 35-155
+/// (70°-310°), saturation above 90 and value above 50 (0-255 scales).
+bool isVividPixel(int r, int g, int b) {
+  final mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+  final mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+  if (mx <= 50) return false;
+  final d = mx - mn;
+  if (d * 255 <= 90 * mx) return false;
+  double h;
+  if (mx == r) {
+    h = 60.0 * (g - b) / d;
+  } else if (mx == g) {
+    h = 120.0 + 60.0 * (b - r) / d;
+  } else {
+    h = 240.0 + 60.0 * (r - g) / d;
+  }
+  if (h < 0) h += 360;
+  return h >= 70 && h <= 310;
+}
+
+/// Share of vivid pixels in an RGBA buffer, sampling every [step]th pixel.
+double vividShareRgba(Uint8List rgba, int width, int height, {int step = 2}) {
+  var n = 0, hit = 0;
+  for (var y = 0; y < height; y += step) {
+    for (var x = 0; x < width; x += step) {
+      final i = (y * width + x) * 4;
+      n++;
+      if (isVividPixel(rgba[i], rgba[i + 1], rgba[i + 2])) hit++;
+    }
+  }
+  return n == 0 ? 0 : hit / n;
+}
+
 class SubjectAssessment {
   const SubjectAssessment(this.verdict, {this.dogScore = 0, this.otherLabel});
 
@@ -111,6 +155,7 @@ class SubjectAssessment {
   static SubjectAssessment decide(
     Iterable<(String, double)> labels, {
     SubjectThresholds thresholds = const SubjectThresholds(),
+    double vivid = 0,
   }) {
     final scores = <String, double>{};
     for (final (label, score) in labels) {
@@ -159,6 +204,8 @@ class SubjectAssessment {
       if (knit != null) return reject(knit);
     }
 
+    if (vivid > vividReject) return reject('Vivid colour');
+
     return SubjectAssessment(SubjectVerdict.unsure, dogScore: dog);
   }
 }
@@ -177,8 +224,58 @@ class SubjectCheck {
   static Future<SubjectAssessment> assessFile(
     String path, {
     SubjectThresholds thresholds = const SubjectThresholds(),
-  }) =>
-      _assess(InputImage.fromFilePath(path), thresholds);
+  }) async =>
+      _assess(
+        InputImage.fromFilePath(path),
+        thresholds,
+        vivid: await _vividShareOfFile(path),
+      );
+
+  /// Vivid-colour share of a photo file, decoded small. 0 on any failure.
+  static Future<double> _vividShareOfFile(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 224);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      final image = frame.image;
+      try {
+        final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        if (data == null) return 0;
+        return vividShareRgba(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          image.width,
+          image.height,
+        );
+      } finally {
+        image.dispose();
+      }
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Vivid-colour share of an NV21 preview frame (Y plane, then interleaved
+  /// V/U at half resolution), sampling every 8th pixel.
+  static double _vividShareOfNv21(Uint8List bytes, int width, int height) {
+    final ySize = width * height;
+    if (bytes.length < ySize + ySize ~/ 2) return 0;
+    var n = 0, hit = 0;
+    for (var y = 0; y < height; y += 8) {
+      for (var x = 0; x < width; x += 8) {
+        final yy = bytes[y * width + x];
+        final uv = ySize + (y >> 1) * width + (x & ~1);
+        final v = bytes[uv] - 128, u = bytes[uv + 1] - 128;
+        int c(double f) => f < 0 ? 0 : (f > 255 ? 255 : f.round());
+        final r = c(yy + 1.402 * v);
+        final g = c(yy - 0.344 * u - 0.714 * v);
+        final b = c(yy + 1.772 * u);
+        n++;
+        if (isVividPixel(r, g, b)) hit++;
+      }
+    }
+    return n == 0 ? 0 : hit / n;
+  }
 
   /// Labels a live camera preview frame (NV21, as the camera screen requests)
   /// for the "no dog in view" hint while aiming. Other frame formats, and any
@@ -204,18 +301,23 @@ class SubjectCheck {
         ),
       ),
       thresholds,
+      vivid: plane.bytesPerRow == frame.width
+          ? _vividShareOfNv21(plane.bytes, frame.width, frame.height)
+          : 0,
     );
   }
 
   static Future<SubjectAssessment> _assess(
     InputImage image,
-    SubjectThresholds thresholds,
-  ) async {
+    SubjectThresholds thresholds, {
+    double vivid = 0,
+  }) async {
     try {
       final labels = await _shared.processImage(image);
       return SubjectAssessment.decide(
         labels.map((l) => (l.label, l.confidence)),
         thresholds: thresholds,
+        vivid: vivid,
       );
     } catch (_) {
       return SubjectAssessment.unknown;
