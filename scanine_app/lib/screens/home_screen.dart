@@ -393,43 +393,42 @@ class _TiltingDogSilhouetteState extends State<_TiltingDogSilhouette>
     with TickerProviderStateMixin {
   late final AnimationController _tilt = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 3),
+    duration: const Duration(milliseconds: 3200),
   );
   late final Animation<double> _eased = CurvedAnimation(
     parent: _tilt,
     curve: Curves.easeInOut,
   );
 
-  // Ear: rests most of the cycle, then flicks back (-10°), overshoots a little
-  // (+3°) and settles, all within about 0.8 s.
+  // Ear: flicks as soon as the screen opens, back (-9°), overshoots (+2°)
+  // and settles in about 1 s, then rests until the next cycle.
   late final AnimationController _earCycle = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 5500),
+    duration: const Duration(milliseconds: 6000),
   );
   late final Animation<double> _ear = TweenSequence<double>([
-    TweenSequenceItem(tween: ConstantTween(0), weight: 80),
     TweenSequenceItem(
       tween: Tween(
         begin: 0.0,
-        end: -10.0,
+        end: -9.0,
       ).chain(CurveTween(curve: Curves.easeOut)),
-      weight: 5,
+      weight: 6,
     ),
     TweenSequenceItem(
       tween: Tween(
-        begin: -10.0,
-        end: 3.0,
+        begin: -9.0,
+        end: 2.0,
       ).chain(CurveTween(curve: Curves.easeInOut)),
-      weight: 5,
+      weight: 6,
     ),
     TweenSequenceItem(
       tween: Tween(
-        begin: 3.0,
+        begin: 2.0,
         end: 0.0,
       ).chain(CurveTween(curve: Curves.easeIn)),
-      weight: 5,
+      weight: 6,
     ),
-    TweenSequenceItem(tween: ConstantTween(0), weight: 5),
+    TweenSequenceItem(tween: ConstantTween(0), weight: 82),
   ]).animate(_earCycle);
 
   @override
@@ -477,8 +476,8 @@ class _DogSilhouettePainter extends CustomPainter {
   /// Ear rotation in degrees around its root (0 = resting).
   final Animation<double> earDegrees;
 
-  /// Largest lift, in radians (about 4.5°).
-  static const double _maxTilt = 0.078;
+  /// Largest lift, in radians (about 5.2°).
+  static const double _maxTilt = 0.09;
 
   @override
   void paint(Canvas canvas, Size size) {
