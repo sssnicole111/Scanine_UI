@@ -82,4 +82,33 @@ void main() {
       expect(verdict([('Wool', 0.8), ('Dog', 0.4)]), SubjectVerdict.unsure);
     });
   });
+
+  group('vivid colour', () {
+    test('green fabric with no confident Dog is rejected', () {
+      final a = SubjectAssessment.decide(
+        [('Textile', 0.8), ('Pattern', 0.7)],
+        vivid: 0.6,
+      );
+      expect(a.verdict, SubjectVerdict.notDog);
+      expect(a.otherLabel, 'Vivid colour');
+    });
+
+    test('a dog on grass still passes', () {
+      final a = SubjectAssessment.decide([('Dog', 0.65)], vivid: 0.65);
+      expect(a.verdict, SubjectVerdict.dog);
+    });
+
+    test('a little colour does not reject', () {
+      final a = SubjectAssessment.decide([('Textile', 0.8)], vivid: 0.2);
+      expect(a.verdict, SubjectVerdict.unsure);
+    });
+
+    test('pixel colours', () {
+      expect(isVividPixel(90, 170, 40), isTrue); // grass green
+      expect(isVividPixel(40, 80, 200), isTrue); // blue
+      expect(isVividPixel(200, 120, 90), isFalse); // pink skin
+      expect(isVividPixel(150, 110, 70), isFalse); // brown coat
+      expect(isVividPixel(120, 130, 125), isFalse); // grey
+    });
+  });
 }
