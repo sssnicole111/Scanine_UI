@@ -47,8 +47,16 @@ class _CameraScreenState extends State<CameraScreen>
       "No dog in view. Point the camera at your dog's skin.";
   static const String _burstNoDogHint =
       "No dog found. Point the camera at your dog's skin.";
+  static const String _releasedEarlyHint =
+      'Keep holding the shutter until all five frames are in.';
+  static const String _holdHint =
+      'Press and hold the shutter over the affected area.';
   bool _dogCheckBusy = false;
   int _lastDogCheck = 0;
+
+  // The burst runs only while the shutter is held. Letting go early cancels
+  // it and discards the frames, so the five frames stay one continuous burst.
+  bool _holding = false;
   int _noDogStreak = 0;
   bool _liveNoDog = false;
 
@@ -498,7 +506,12 @@ class _CameraScreenState extends State<CameraScreen>
   /// Hint under the viewfinder: a burst's warning first, then the live
   /// "no dog in view", then the live focus/light guidance.
   String get _hintText =>
-      _rejectWarning ?? (_liveNoDog ? _noDogHint : _liveQuality.feedbackMessage);
+      _rejectWarning ??
+      (_liveNoDog
+          ? _noDogHint
+          : (!_capturing && _liveQuality.isAcceptable
+              ? _holdHint
+              : _liveQuality.feedbackMessage));
 
   bool get _hintIsWarning => _rejectWarning != null || _liveNoDog;
 
@@ -510,6 +523,13 @@ class _CameraScreenState extends State<CameraScreen>
       _ready = false;
     });
   }
+
+  void _onShutterDown() {
+    _holding = true;
+    if (!_capturing) _capture();
+  }
+
+  void _onShutterUp() => _holding = false;
 
   Future<void> _capture() async {
     final controller = _controller;
@@ -532,7 +552,7 @@ class _CameraScreenState extends State<CameraScreen>
     Future<SubjectAssessment>? dogCheck;
     SubjectAssessment? dogResult;
 
-    Future<void> stopForNoDog() async {
+    Future<void> discardBurst(String hint) async {
       for (final p in _shots) {
         try {
           await File(p).delete();
@@ -542,10 +562,12 @@ class _CameraScreenState extends State<CameraScreen>
       if (mounted) {
         setState(() {
           _frameIndex = 0;
-          _rejectWarning = _burstNoDogHint;
+          _rejectWarning = hint;
         });
       }
     }
+
+    Future<void> stopForNoDog() => discardBurst(_burstNoDogHint);
 
     // When the previous photo started, to keep frames _interFrameMs apart.
     Stopwatch? sinceLastShot;
@@ -562,10 +584,18 @@ class _CameraScreenState extends State<CameraScreen>
           await stopForNoDog();
           return;
         }
+        if (!_holding) {
+          await discardBurst(_releasedEarlyHint);
+          return;
+        }
 
         final left = _interFrameMs - (sinceLastShot?.elapsedMilliseconds ?? _interFrameMs);
         if (left > 0) await Future<void>.delayed(Duration(milliseconds: left));
         if (!mounted || _suspended) return;
+        if (!_holding) {
+          await discardBurst(_releasedEarlyHint);
+          return;
+        }
         sinceLastShot = Stopwatch()..start();
 
         String shotPath;
@@ -889,7 +919,8 @@ class _CameraScreenState extends State<CameraScreen>
                         _UploadButton(onTap: _goToUpload, enabled: !_capturing),
                         const SizedBox(width: 32),
                         _Shutter(
-                          onTap: _capture,
+                          onHoldStart: _onShutterDown,
+                          onHoldEnd: _onShutterUp,
                           busy: _capturing,
                           isReady: _liveQuality.isAcceptable,
                           acceptedFrames: _frameIndex,
@@ -1214,16 +1245,20 @@ class _CornerBracketsPainter extends CustomPainter {
 }
 
 /// Dual concentric circle shutter button matching the reference design:
-/// Navy outer border ring + solid navy inner circle with tap feedback.
+/// Navy outer border ring + solid navy inner circle. Press and hold: the
+/// burst runs while a finger is down. Raw pointer events, so a long hold is
+/// never turned into a cancelled tap by the gesture arena.
 class _Shutter extends StatefulWidget {
   const _Shutter({
-    required this.onTap,
+    required this.onHoldStart,
+    required this.onHoldEnd,
     required this.busy,
     required this.isReady,
     this.acceptedFrames = 0,
   });
 
-  final VoidCallback onTap;
+  final VoidCallback onHoldStart;
+  final VoidCallback onHoldEnd;
   final bool busy;
   final bool isReady;
   final int acceptedFrames;
@@ -1238,6 +1273,12 @@ class _ShutterState extends State<_Shutter> {
   bool get _isTakingFrames => widget.busy || widget.acceptedFrames > 0;
   bool get _canTap => !widget.busy && widget.acceptedFrames < kTotalFrames;
 
+  void _release() {
+    if (!_pressed) return;
+    setState(() => _pressed = false);
+    widget.onHoldEnd();
+  }
+
   @override
   Widget build(BuildContext context) {
     const navy = Color(0xFF193863);
@@ -1247,22 +1288,17 @@ class _ShutterState extends State<_Shutter> {
     return Semantics(
       button: true,
       enabled: _canTap,
-      label: 'Shutter button',
+      label: 'Shutter button, press and hold',
       value: _isTakingFrames ? '$clampedFrames of 5 frames accepted' : null,
-      child: GestureDetector(
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        onTapDown: (_) {
-          if (_canTap) setState(() => _pressed = true);
+        onPointerDown: (_) {
+          if (!_canTap || _pressed) return;
+          setState(() => _pressed = true);
+          widget.onHoldStart();
         },
-        onTapUp: (_) {
-          if (_pressed) {
-            setState(() => _pressed = false);
-            if (_canTap) widget.onTap();
-          }
-        },
-        onTapCancel: () {
-          if (_pressed) setState(() => _pressed = false);
-        },
+        onPointerUp: (_) => _release(),
+        onPointerCancel: (_) => _release(),
         child: AnimatedScale(
           scale: _pressed || widget.busy ? 0.93 : 1.0,
           duration: const Duration(milliseconds: 140),
