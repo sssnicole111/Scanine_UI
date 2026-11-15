@@ -88,19 +88,10 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _toggleFlash() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     try {
-      final FlashMode nextMode;
-      switch (_flashMode) {
-        case FlashMode.off:
-          nextMode = FlashMode.torch;
-          break;
-        case FlashMode.torch:
-          nextMode = FlashMode.auto;
-          break;
-        case FlashMode.auto:
-        default:
-          nextMode = FlashMode.off;
-          break;
-      }
+      // Off or torch only: the torch lights all five burst frames evenly,
+      // where auto flash would fire once per frame.
+      final nextMode =
+          _flashMode == FlashMode.torch ? FlashMode.off : FlashMode.torch;
       await _controller!.setFlashMode(nextMode);
       if (mounted) {
         setState(() {
@@ -1074,11 +1065,6 @@ class _FlashButton extends StatelessWidget {
           Icons.flash_on_rounded,
           const Color(0xFFDCA052),
           'Flash: On',
-        ),
-      FlashMode.auto => (
-          Icons.flash_auto_rounded,
-          const Color(0xFF073858),
-          'Flash: Auto',
         ),
       _ => (Icons.flash_off_rounded, const Color(0xFF073858), 'Flash: Off'),
     };
