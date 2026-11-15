@@ -50,25 +50,13 @@ class _CameraScreenState extends State<CameraScreen>
   static const String _releasedEarlyHint =
       'Keep holding the shutter until all five frames are in.';
   static const String _holdHint =
-      'Press and hold the shutter for about 3 seconds.';
+      'Press and hold the shutter over the affected area.';
   bool _dogCheckBusy = false;
   int _lastDogCheck = 0;
 
   // The burst runs only while the shutter is held. Letting go early cancels
   // it and discards the frames, so the five frames stay one continuous burst.
   bool _holding = false;
-
-  // A finger that slips off the shutter gets this long to press again before
-  // the burst is cancelled; about one frame gap, so the burst stays continuous.
-  static const Duration _releaseGrace = Duration(milliseconds: 600);
-
-  // After this many bad frames in a row the burst stops and says why, rather
-  // than retrying for as long as the shutter is held (e.g. in a dark room).
-  static const int _maxRejectsInARow = 5;
-
-  // Sharpest recent preview score, fading so it follows the scene. The live
-  // focus readout says "Blurry" when a frame falls well below it.
-  double _sharpRef = 0;
   int _noDogStreak = 0;
   bool _liveNoDog = false;
 
@@ -147,7 +135,7 @@ class _CameraScreenState extends State<CameraScreen>
     focus: FocusStatus.sharp,
     light: LightStatus.adequate,
     isAcceptable: true,
-    feedbackMessage: 'Keep the phone still over the affected area.',
+    feedbackMessage: 'Hold steady over the affected area.',
   );
 
   @override
@@ -315,12 +303,7 @@ class _CameraScreenState extends State<CameraScreen>
         _isProcessingFrame = true;
         _lastSampleTimestamp = now;
 
-        final raw = QualityGate.assessCameraImage(image);
-        _sharpRef = math.max(raw.blurScore, _sharpRef * 0.85);
-        final assessment = QualityGate.rejudge(
-          raw,
-          blurMin: relativeSharpness * _sharpRef,
-        );
+        final assessment = QualityGate.assessCameraImage(image);
         if (mounted) {
           setState(() {
             _liveQuality = assessment;
@@ -541,16 +524,6 @@ class _CameraScreenState extends State<CameraScreen>
     });
   }
 
-  /// Why a burst gave up after [_maxRejectsInARow] bad frames.
-  static String _tooManyRejectsHint(QualityAssessment a) {
-    final dark = a.light == LightStatus.tooDark || a.light == LightStatus.lowLight;
-    if (dark) return 'Too dark for clear frames. Move to brighter light and try again.';
-    if (a.light == LightStatus.tooBright) {
-      return 'Too much glare for clear frames. Move out of direct light and try again.';
-    }
-    return 'Frames kept coming out blurry. Keep the phone still and try again.';
-  }
-
   void _onShutterDown() {
     _holding = true;
     if (!_capturing) _capture();
@@ -596,27 +569,6 @@ class _CameraScreenState extends State<CameraScreen>
 
     Future<void> stopForNoDog() => discardBurst(_burstNoDogHint);
 
-    // True if the shutter is held, or pressed again within [_releaseGrace].
-    Future<bool> stillHolding() async {
-      if (_holding) return true;
-      final waited = Stopwatch()..start();
-      while (waited.elapsed < _releaseGrace) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        if (_holding) return true;
-      }
-      return false;
-    }
-
-    var rejectsInARow = 0;
-
-    // Sharpest frame of this burst so far. Each frame must reach a share of
-    // it, so blur is judged against the same scene. The share eases after
-    // every rejected frame in a row, so a dog that keeps moving still gets
-    // through, while a single smeared frame among sharp ones is dropped.
-    var burstSharpest = 0.0;
-    double sharpShare() =>
-        math.max(0.12, relativeSharpness * math.pow(0.75, rejectsInARow));
-
     // When the previous photo started, to keep frames _interFrameMs apart.
     Stopwatch? sinceLastShot;
 
@@ -632,8 +584,7 @@ class _CameraScreenState extends State<CameraScreen>
           await stopForNoDog();
           return;
         }
-        if (!await stillHolding()) {
-          if (!mounted || _suspended) return;
+        if (!_holding) {
           await discardBurst(_releasedEarlyHint);
           return;
         }
@@ -641,8 +592,7 @@ class _CameraScreenState extends State<CameraScreen>
         final left = _interFrameMs - (sinceLastShot?.elapsedMilliseconds ?? _interFrameMs);
         if (left > 0) await Future<void>.delayed(Duration(milliseconds: left));
         if (!mounted || _suspended) return;
-        if (!await stillHolding()) {
-          if (!mounted || _suspended) return;
+        if (!_holding) {
           await discardBurst(_releasedEarlyHint);
           return;
         }
@@ -657,12 +607,7 @@ class _CameraScreenState extends State<CameraScreen>
         }
         attempted++;
 
-        final measured = await QualityGate.assessFile(shotPath);
-        final assessment = QualityGate.rejudge(
-          measured,
-          blurMin: sharpShare() * burstSharpest,
-        );
-        burstSharpest = math.max(burstSharpest, measured.blurScore);
+        final assessment = await QualityGate.assessFile(shotPath);
 
         if (!assessment.isAcceptable) {
           // Reject this frame silently — delete the file, update hint
@@ -678,11 +623,6 @@ class _CameraScreenState extends State<CameraScreen>
             });
           }
 
-          rejectsInARow++;
-          if (rejectsInARow >= _maxRejectsInARow) {
-            await discardBurst(_tooManyRejectsHint(assessment));
-            return;
-          }
           continue;
         }
 
@@ -693,7 +633,6 @@ class _CameraScreenState extends State<CameraScreen>
         }
 
         // Frame passed the quality gate
-        rejectsInARow = 0;
         _shots.add(shotPath);
         accepted++;
 
@@ -983,9 +922,7 @@ class _CameraScreenState extends State<CameraScreen>
                           onHoldStart: _onShutterDown,
                           onHoldEnd: _onShutterUp,
                           busy: _capturing,
-                          // Navy whenever it can be pressed; focus and light
-                          // have their own readouts above.
-                          isReady: _ready,
+                          isReady: _liveQuality.isAcceptable,
                           acceptedFrames: _frameIndex,
                         ),
                         const SizedBox(width: 32),
