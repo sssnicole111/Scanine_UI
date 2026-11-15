@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/clinic.dart';
-import '../models/referral_answers.dart';
 import '../models/screening_result.dart';
 import '../theme/tokens.dart';
 import '../widgets/tacloban_map.dart';
@@ -12,12 +11,9 @@ import '../widgets/tacloban_map.dart';
 /// is drawn locally and the clinic list is a bundled asset. Navigation and
 /// calling are handed off to the phone's own apps.
 class ReferralScreen extends StatefulWidget {
-  const ReferralScreen({super.key, required this.result, this.answers});
+  const ReferralScreen({super.key, required this.result});
 
   final ScreeningResult result;
-
-  /// The owner's answers for the vet, or null if they skipped them.
-  final ReferralAnswers? answers;
 
   @override
   State<ReferralScreen> createState() => _ReferralScreenState();

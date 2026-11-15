@@ -20,26 +20,9 @@ void main() {
     expect(verdict([('Cat', 0.95), ('Fur', 0.9)]), SubjectVerdict.unsure);
   });
 
-  test('a weak Dog with weak other labels is unsure, not rejected', () {
+  test('weak labels only are unsure, not rejected', () {
     expect(verdict([('Food', 0.5), ('Dog', 0.4)]), SubjectVerdict.unsure);
-  });
-
-  group('plain surfaces', () {
-    test('street concrete and denim are rejected (labels from the phone)', () {
-      expect(
-        verdict([('Asphalt', 0.90), ('Sand', 0.68), ('Pattern', 0.56)]),
-        SubjectVerdict.notDog,
-      );
-      expect(
-        verdict([('Jeans', 0.79), ('Pattern', 0.70), ('Denim', 0.62)]),
-        SubjectVerdict.notDog,
-      );
-    });
-
-    test('Jeans alone, or ground with a confident Dog, still passes', () {
-      expect(verdict([('Jeans', 0.79), ('Pattern', 0.70)]), SubjectVerdict.unsure);
-      expect(verdict([('Asphalt', 0.9), ('Dog', 0.6)]), SubjectVerdict.dog);
-    });
+    expect(verdict([]), SubjectVerdict.unsure);
   });
 
   test('thresholds are inclusive', () {

@@ -26,16 +26,12 @@ enum LightStatus {
 /// (Chapter 3 & 4: Laplacian variance for blur and mean pixel intensity for exposure).
 class QualityThresholds {
   const QualityThresholds({
-    this.blurMinVariance = 10.0,
+    this.blurMinVariance = 80.0,
     this.lightMinIntensity = 42.0,
     this.lightMaxIntensity = 222.0,
   });
 
-  /// Floor on the variance of the Laplacian (measured on the shrunk centre
-  /// grid) below which a frame is 'Blurry' whatever the scene: smeared
-  /// or blank. 2.0% of the dataset dog photos fall below it. The camera
-  /// also compares each frame with the sharpest recent one of the same scene
-  /// ([relativeSharpness]), which is what catches a dog that moved.
+  /// Minimum variance of the Laplacian operator for an image to be deemed 'Sharp'.
   final double blurMinVariance;
 
   /// Minimum mean pixel luminance (0..255) for adequate lighting.
@@ -44,13 +40,6 @@ class QualityThresholds {
   /// Maximum mean pixel luminance (0..255) before an image is considered overexposed.
   final double lightMaxIntensity;
 }
-
-/// A frame is blurry if its score is under this share of the sharpest recent
-/// frame of the same scene. Tested by smearing 300 dataset dog photos at
-/// phone resolution: 0.25 passes 98% of sharp frames and 90% with slight
-/// motion (about 2 px at the model's 224 px), and rejects 78% with clear
-/// motion (3 px) and 97% with heavy motion (6 px).
-const double relativeSharpness = 0.25;
 
 /// Consolidated result of the on-device image quality gate.
 class QualityAssessment {
@@ -105,7 +94,7 @@ class QualityAssessment {
     focus: FocusStatus.checking,
     light: LightStatus.checking,
     isAcceptable: false,
-    feedbackMessage: 'Keep the phone still over the affected area.',
+    feedbackMessage: 'Hold steady over the affected area.',
   );
 }
 
@@ -153,17 +142,48 @@ class QualityGate {
     }
   }
 
-  /// Assesses raw RGBA pixels ([width] x [height], 4 bytes per pixel).
+  /// Assesses raw RGBA pixels ([width] x [height], 4 bytes per pixel), using
+  /// the same centre patch and maths as [assessDecodedImage].
   static QualityAssessment assessRgba(
     Uint8List rgba,
     int width,
     int height, {
     QualityThresholds thresholds = defaultThresholds,
   }) {
-    return _assessLuma(width, height, thresholds, (x, y) {
-      final i = (y * width + x) * 4;
-      return 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
-    });
+    const sampleSize = 160;
+    final startX = math.max(0, (width - sampleSize) ~/ 2);
+    final startY = math.max(0, (height - sampleSize) ~/ 2);
+    final actualW = math.min(sampleSize, width - startX);
+    final actualH = math.min(sampleSize, height - startY);
+
+    if (actualW < 4 || actualH < 4) {
+      return QualityAssessment.checking;
+    }
+
+    final grid = List.generate(
+      actualH,
+      (y) => Float32List(actualW),
+      growable: false,
+    );
+
+    double sumLuminance = 0.0;
+    final totalPixels = actualW * actualH;
+
+    for (int y = 0; y < actualH; y++) {
+      final row = (startY + y) * width;
+      for (int x = 0; x < actualW; x++) {
+        final i = (row + startX + x) * 4;
+        // Standard Rec. 601 luminance
+        final lum = 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+        grid[y][x] = lum;
+        sumLuminance += lum;
+      }
+    }
+
+    final meanIntensity = sumLuminance / totalPixels;
+    final lapVariance = _computeLaplacianVariance(grid, actualW, actualH);
+
+    return _evaluate(lapVariance, meanIntensity, thresholds);
   }
 
   /// Assesses an [img.Image] decoded in memory.
@@ -171,14 +191,47 @@ class QualityGate {
     img.Image image, {
     QualityThresholds thresholds = defaultThresholds,
   }) {
-    return _assessLuma(image.width, image.height, thresholds, (x, y) {
-      final p = image.getPixel(x, y);
-      return (0.299 * p.r + 0.587 * p.g + 0.114 * p.b).toDouble();
-    });
+    // Sample a center crop (e.g. 180x180) to evaluate the region of interest
+    const sampleSize = 160;
+    final w = image.width;
+    final h = image.height;
+    final startX = math.max(0, (w - sampleSize) ~/ 2);
+    final startY = math.max(0, (h - sampleSize) ~/ 2);
+    final actualW = math.min(sampleSize, w - startX);
+    final actualH = math.min(sampleSize, h - startY);
+
+    if (actualW < 4 || actualH < 4) {
+      return QualityAssessment.checking;
+    }
+
+    // Extract 2D grayscale luminance array
+    final grid = List.generate(
+      actualH,
+      (y) => Float32List(actualW),
+      growable: false,
+    );
+
+    double sumLuminance = 0.0;
+    final totalPixels = actualW * actualH;
+
+    for (int y = 0; y < actualH; y++) {
+      for (int x = 0; x < actualW; x++) {
+        final pixel = image.getPixel(startX + x, startY + y);
+        // Standard Rec. 601 luminance
+        final lum = (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b).toDouble();
+        grid[y][x] = lum;
+        sumLuminance += lum;
+      }
+    }
+
+    final meanIntensity = sumLuminance / totalPixels;
+    final lapVariance = _computeLaplacianVariance(grid, actualW, actualH);
+
+    return _evaluate(lapVariance, meanIntensity, thresholds);
   }
 
-  /// Assesses a live [CameraImage] frame in real time, from the Y
-  /// (luminance) plane directly.
+  /// Assesses a live [CameraImage] frame in real time.
+  /// Inspects the Y (luminance) plane directly for zero-copy performance.
   static QualityAssessment assessCameraImage(
     CameraImage cameraImage, {
     QualityThresholds thresholds = defaultThresholds,
@@ -186,80 +239,49 @@ class QualityGate {
     try {
       final plane = cameraImage.planes.first;
       final bytes = plane.bytes;
+      final width = cameraImage.width;
+      final height = cameraImage.height;
       final bytesPerRow = plane.bytesPerRow;
-      return _assessLuma(cameraImage.width, cameraImage.height, thresholds,
-          (x, y) {
-        final i = y * bytesPerRow + x;
-        return i < bytes.length ? bytes[i].toDouble() : 0.0;
-      });
+
+      // Focus on the center crop corresponding to the reticle
+      const sampleSize = 140;
+      final startX = math.max(0, (width - sampleSize) ~/ 2);
+      final startY = math.max(0, (height - sampleSize) ~/ 2);
+      final actualW = math.min(sampleSize, width - startX);
+      final actualH = math.min(sampleSize, height - startY);
+
+      if (actualW < 4 || actualH < 4) {
+        return QualityAssessment.checking;
+      }
+
+      final grid = List.generate(
+        actualH,
+        (y) => Float32List(actualW),
+        growable: false,
+      );
+
+      double sumLuminance = 0.0;
+      final totalPixels = actualW * actualH;
+
+      for (int y = 0; y < actualH; y++) {
+        final rowOffset = (startY + y) * bytesPerRow;
+        for (int x = 0; x < actualW; x++) {
+          final index = rowOffset + (startX + x);
+          if (index < bytes.length) {
+            final lum = bytes[index].toDouble();
+            grid[y][x] = lum;
+            sumLuminance += lum;
+          }
+        }
+      }
+
+      final meanIntensity = sumLuminance / totalPixels;
+      final lapVariance = _computeLaplacianVariance(grid, actualW, actualH);
+
+      return _evaluate(lapVariance, meanIntensity, thresholds);
     } catch (_) {
       return QualityAssessment.checking;
     }
-  }
-
-  /// Side of the square grid the blur and light are measured on.
-  static const int _grid = 160;
-
-  /// Measures the centre square (60% of the shorter side), shrunk to a
-  /// [_grid] x [_grid] luminance grid by averaging. Shrinking first means blur
-  /// is judged near the scale the model sees (it gets the frame at 224 px),
-  /// so smooth skin or slight motion that the model can't notice isn't
-  /// called blurry. Each cell averages up to 4 x 4 evenly spaced pixels.
-  static QualityAssessment _assessLuma(
-    int width,
-    int height,
-    QualityThresholds thresholds,
-    double Function(int x, int y) lumaAt,
-  ) {
-    final side = (math.min(width, height) * 0.6).floor();
-    if (side < 8) return QualityAssessment.checking;
-    final startX = (width - side) ~/ 2;
-    final startY = (height - side) ~/ 2;
-    final n = math.min(side, _grid);
-    final cell = side / n;
-    final taps = math.max(1, math.min(4, cell.floor()));
-
-    final grid = List.generate(n, (_) => Float32List(n), growable: false);
-    double sumLuminance = 0.0;
-    for (var gy = 0; gy < n; gy++) {
-      final row = grid[gy];
-      for (var gx = 0; gx < n; gx++) {
-        var sum = 0.0;
-        for (var ty = 0; ty < taps; ty++) {
-          final y = startY + ((gy + (ty + 0.5) / taps) * cell).floor();
-          for (var tx = 0; tx < taps; tx++) {
-            final x = startX + ((gx + (tx + 0.5) / taps) * cell).floor();
-            sum += lumaAt(x, y);
-          }
-        }
-        final lum = sum / (taps * taps);
-        row[gx] = lum;
-        sumLuminance += lum;
-      }
-    }
-
-    final meanIntensity = sumLuminance / (n * n);
-    final lapVariance = _computeLaplacianVariance(grid, n, n);
-    return _evaluate(lapVariance, meanIntensity, thresholds);
-  }
-
-  /// Judges [a] again against a stricter blur limit, e.g. one set relative to
-  /// the sharpest recent frame of the same scene.
-  static QualityAssessment rejudge(
-    QualityAssessment a, {
-    required double blurMin,
-    QualityThresholds thresholds = defaultThresholds,
-  }) {
-    if (a.focus == FocusStatus.checking) return a;
-    return _evaluate(
-      a.blurScore,
-      a.lightScore,
-      QualityThresholds(
-        blurMinVariance: math.max(thresholds.blurMinVariance, blurMin),
-        lightMinIntensity: thresholds.lightMinIntensity,
-        lightMaxIntensity: thresholds.lightMaxIntensity,
-      ),
-    );
   }
 
   /// Computes the variance of the 4-neighbor discrete Laplacian operator:
@@ -317,16 +339,16 @@ class QualityGate {
     final String feedback;
     if (!isAcceptable) {
       if (focus == FocusStatus.blurry && (light == LightStatus.tooDark || light == LightStatus.lowLight)) {
-        feedback = 'Keep the phone still and find brighter light.';
+        feedback = 'Hold steady and increase lighting.';
       } else if (focus == FocusStatus.blurry) {
-        feedback = 'Keep the phone still over the affected area.';
+        feedback = 'Hold steady over the affected area.';
       } else if (light == LightStatus.tooDark || light == LightStatus.lowLight) {
         feedback = 'Lighting is dim. Point towards brighter light.';
       } else {
         feedback = 'Lighting is too bright. Reduce direct glare.';
       }
     } else {
-      feedback = 'Keep the phone still over the affected area.';
+      feedback = 'Hold steady over the affected area.';
     }
 
     return QualityAssessment(

@@ -8,7 +8,7 @@ import '../models/scan_trace.dart';
 import '../models/screening_result.dart';
 import '../theme/routes.dart';
 import 'camera_screen.dart';
-import 'referral_questions_screen.dart';
+import 'referral_screen.dart';
 import 'upload_screen.dart';
 
 /// Design tokens matching the result screen prototype and design specification.
@@ -399,7 +399,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   // Refer to veterinarian
                   AppRoutes.push(
                     context,
-                    (_) => ReferralQuestionsScreen(result: r),
+                    (_) => ReferralScreen(result: r),
                   );
                 }
               },
@@ -407,7 +407,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   ? () {
                       AppRoutes.push(
                         context,
-                        (_) => ReferralQuestionsScreen(result: r),
+                        (_) => ReferralScreen(result: r),
                       );
                     }
                   : null,
