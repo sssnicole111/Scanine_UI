@@ -60,6 +60,39 @@ class ReferralSummaryScreen extends StatelessWidget {
         '${result.totalFrames} frames agreeing.';
   }
 
+  void _showSaveMenu(BuildContext context) {
+    final messenger = ScaffoldMessenger.of(context);
+    void pick(String what) {
+      Navigator.of(context).pop();
+      messenger.showSnackBar(
+        SnackBar(content: Text('$what PDF isn’t built yet.')),
+      );
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      barrierColor: const Color(0x38073858),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _MenuRow('Summary for the vet', () => pick('Summary')),
+              const Divider(height: 1, color: Color(0xFFEEF1F6)),
+              _MenuRow('Care guide', () => pick('Care guide')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const heroHeight = 300.0;
@@ -260,9 +293,39 @@ class ReferralSummaryScreen extends StatelessWidget {
                   context,
                   (_) => ReferralScreen(result: result, answers: answers),
                 ),
+                secondaryText: 'Save as PDF',
+                onSecondary: () => _showSaveMenu(context),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow(this.label, this.onTap);
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'InstrumentSans',
+              fontSize: 16,
+              color: RefTheme.ink,
+            ),
+          ),
         ),
       ),
     );
