@@ -4,12 +4,13 @@
 // on-device image labeler checks that it plausibly shows a dog. Separate from
 // the Scanine model, which is not touched.
 //
-// Three verdicts, so a close-up the labeler can't place is never blocked:
+// Three verdicts:
 //   dog     – "Dog" label at or above [SubjectThresholds.dogKeep], unless the
 //             photo is clearly a human face
 //   notDog  – a human face; or, with no confident "Dog": human body or bare
-//             human skin, a clear non-dog scene/object, knitted fabric, or a
-//             photo mostly in strong green/blue/purple (fabric, posters)
+//             human skin, a clear non-dog scene/object, knitted fabric, a
+//             photo mostly in strong green/blue/purple (fabric, posters), or
+//             plain ground or denim
 //   unsure  – anything else (continue as normal)
 //
 // Thresholds from the on-phone evaluation: 854 dog photos, 148 COCO not-dog
@@ -138,6 +139,20 @@ double vividShareRgba(Uint8List rgba, int width, int height, {int step = 2}) {
   return n == 0 ? 0 : hit / n;
 }
 
+/// Plain ground and denim, from the labels ML Kit gave street concrete and
+/// jeans on the phone. Each rejects at its score when "Dog" isn't confident.
+/// On the 854 dataset dog photos they block 3 more (all Healthy, 22 in
+/// total, 2.6%), none with a skin condition.
+const Map<String, double> surfaceLabels = {
+  'Asphalt': 0.65,
+  'Sand': 0.65,
+  'Space': 0.65,
+};
+
+/// Denim needs both labels: "Jeans" alone is common on dog coats.
+const double denimReject = 0.55;
+const double denimJeansReject = 0.70;
+
 class SubjectAssessment {
   const SubjectAssessment(this.verdict, {this.dogScore = 0, this.otherLabel});
 
@@ -205,6 +220,13 @@ class SubjectAssessment {
     }
 
     if (vivid > vividReject) return reject('Vivid colour');
+
+    for (final e in surfaceLabels.entries) {
+      if (of(e.key) >= e.value) return reject(e.key);
+    }
+    if (of('Denim') >= denimReject && of('Jeans') >= denimJeansReject) {
+      return reject('Denim');
+    }
 
     return SubjectAssessment(SubjectVerdict.unsure, dogScore: dog);
   }
