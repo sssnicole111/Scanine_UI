@@ -78,10 +78,10 @@ class ScreeningResult {
   ///      — catches cases where the top two probs are nearly tied
   ///   3. For a 5-frame live burst: fewer than 3 frames agree on the winner
   ///
-  /// With the Coordinate Attention model (20261029_1846) the 0.70 threshold
-  /// gives 95.7% selective accuracy on validation (answering 90.0%) and 94.0%
-  /// on the test set (answering 89.3%) (threshold_table.csv). 0.70 is also
-  /// the notebook's own suggestion for this run.
+  /// With the Coordinate Attention model (20261108_1540) the 0.70 threshold
+  /// gives 95.7% selective accuracy on validation (answering 86.7%) and 94.9%
+  /// on the test set (answering 86.7%) (threshold_table.csv). The notebook's
+  /// own suggestion for this run is 0.65; the app keeps 0.70.
   factory ScreeningResult.fromFrames({
     required List<FrameResult> frames,
     required String imagePath,

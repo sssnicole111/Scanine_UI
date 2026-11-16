@@ -4,6 +4,16 @@
   "province": "Leyte",
   "clinics": [
     {
+      "name": "R Eight Veterinary Clinic",
+      "address": "Brgy. 95-A Caibaan, Maharlika Highway, Tacloban City",
+      "phone": "0908 814 6498",
+      "hours": "Mon–Tue & Thu–Sat: 8:00 AM – 6:00 PM; Wed: 8:00 AM – 5:00 PM; Sun: 9:00 AM – 3:00 PM",
+      "services": "Veterinary clinic",
+      "x": 0.345,
+      "y": 0.893,
+      "verified": true
+    },
+    {
       "name": "VetCare Pet Clinic",
       "address": "Burgos St., Tacloban City, 6500 Leyte",
       "phone": "0926 635 0477",
@@ -71,16 +81,6 @@
       "services": "Veterinary clinic",
       "x": null,
       "y": null,
-      "verified": true
-    },
-    {
-      "name": "R Eight Veterinary Clinic",
-      "address": "Brgy. 95-A Caibaan, Maharlika Highway, Tacloban City",
-      "phone": "0908 814 6498",
-      "hours": "Mon–Tue & Thu–Sat: 8:00 AM – 6:00 PM; Wed: 8:00 AM – 5:00 PM; Sun: 9:00 AM – 3:00 PM",
-      "services": "Veterinary clinic",
-      "x": 0.345,
-      "y": 0.893,
       "verified": true
     },
     {

@@ -1,5 +1,5 @@
 {
-  "run": "20261029_1846_mnv3s_ca_passthrough_seed42",
+  "run": "20261108_1540_mnv3s_ca_passthrough_seed2",
   "architecture": "mnv3s_ca_passthrough",
   "classes": [
     "Ringworm",
@@ -14,117 +14,117 @@
     "Healthy": "Dermatologically normal"
   },
   "n_images": {
-    "train": 1214,
-    "val": 260,
-    "test": 261,
+    "train": 1264,
+    "val": 271,
+    "test": 271,
     "excluded": 0
   },
   "per_class_split": {
     "test": {
-      "Ringworm": 57,
-      "Hotspot": 58,
-      "FAD": 57,
+      "Ringworm": 61,
+      "Hotspot": 60,
+      "FAD": 61,
       "Healthy": 89
     },
     "train": {
-      "Ringworm": 263,
-      "Hotspot": 274,
-      "FAD": 260,
+      "Ringworm": 282,
+      "Hotspot": 283,
+      "FAD": 282,
       "Healthy": 417
     },
     "val": {
-      "Ringworm": 57,
-      "Hotspot": 58,
-      "FAD": 56,
+      "Ringworm": 61,
+      "Hotspot": 60,
+      "FAD": 61,
       "Healthy": 89
     }
   },
   "test": {
-    "accuracy": 0.9080459770114943,
-    "precision_macro": 0.9038770053475936,
-    "recall_macro": 0.898420134994596,
-    "f1_macro": 0.8993878232816488,
-    "auc_macro_ovr": 0.9819707245874096,
+    "accuracy": 0.9114391143911439,
+    "precision_macro": 0.9093486527880338,
+    "recall_macro": 0.9040131700128936,
+    "f1_macro": 0.9049674659243706,
+    "auc_macro_ovr": 0.9810229553977912,
     "ci95": {
       "accuracy": [
-        0.8697318007662835,
-        0.9425287356321839
+        0.8782287822878229,
+        0.940959409594096
       ],
       "macro_precision": [
-        0.8654386790931027,
-        0.9394977048448439
+        0.8746112620732778,
+        0.9403269936928959
       ],
       "macro_recall": [
-        0.8573833007593278,
-        0.9362182537030664
+        0.8645542085899042,
+        0.9373401559591381
       ],
       "macro_auc": [
-        0.970124432466937,
-        0.9919320719297189
+        0.9694784287394573,
+        0.9904252957546289
       ]
     },
     "per_class": {
       "Ringworm": {
-        "n": 57,
-        "precision": 0.8,
-        "recall": 0.9123,
-        "f1": 0.8525,
-        "auc": 0.9741
+        "n": 61,
+        "precision": 0.8966,
+        "recall": 0.8525,
+        "f1": 0.8739,
+        "auc": 0.9671
       },
       "Hotspot": {
-        "n": 58,
-        "precision": 0.9273,
-        "recall": 0.8793,
-        "f1": 0.9027,
-        "auc": 0.9901
+        "n": 60,
+        "precision": 0.8507,
+        "recall": 0.95,
+        "f1": 0.8976,
+        "auc": 0.9767
       },
       "FAD": {
-        "n": 57,
-        "precision": 0.9216,
-        "recall": 0.8246,
-        "f1": 0.8704,
-        "auc": 0.9656
+        "n": 61,
+        "precision": 0.9444,
+        "recall": 0.8361,
+        "f1": 0.887,
+        "auc": 0.9824
       },
       "Healthy": {
         "n": 89,
-        "precision": 0.9667,
+        "precision": 0.9457,
         "recall": 0.9775,
-        "f1": 0.9721,
-        "auc": 0.9981
+        "f1": 0.9613,
+        "auc": 0.9979
       }
     }
   },
   "healthy_photo_type_check": null,
-  "temperature": 1.7076734979857358,
-  "suggested_confidence_threshold": 0.7,
+  "temperature": 1.6483657728803767,
+  "suggested_confidence_threshold": 0.65,
   "target_selective_accuracy": 0.95,
   "tflite": {
     "fp32": {
       "size_mb": 2.321064,
-      "accuracy": 0.9080459770114943,
-      "macro_auc": 0.9819707245874096,
+      "accuracy": 0.9114391143911439,
+      "macro_auc": 0.9810229553977912,
       "agreement_with_keras": 1.0,
-      "max_prob_diff": 8.881092071533203e-06,
-      "mean_gradcam_diff": 6.315412974799983e-07,
-      "colab_cpu_ms_per_image": 2.5766706466674805
+      "max_prob_diff": 7.748603820800781e-06,
+      "mean_gradcam_diff": 6.462731221290596e-07,
+      "colab_cpu_ms_per_image": 4.020681381225586
     },
     "fp16": {
       "size_mb": 1.236828,
-      "accuracy": 0.9080459770114943,
-      "macro_auc": 0.9819549264618856,
-      "agreement_with_keras": 1.0,
-      "max_prob_diff": 0.024956345558166504,
-      "mean_gradcam_diff": 0.0013749217614531517,
-      "colab_cpu_ms_per_image": 2.578110694885254
+      "accuracy": 0.915129151291513,
+      "macro_auc": 0.9811012506425458,
+      "agreement_with_keras": 0.996309963099631,
+      "max_prob_diff": 0.04913067817687988,
+      "mean_gradcam_diff": 0.002245948649942875,
+      "colab_cpu_ms_per_image": 3.997707366943359
     },
     "int8_dynamic": {
       "size_mb": 0.82808,
-      "accuracy": 0.8773946360153256,
-      "macro_auc": 0.9774610667227743,
-      "agreement_with_keras": 0.9540229885057471,
-      "max_prob_diff": 0.5349588990211487,
-      "mean_gradcam_diff": 0.04555265232920647,
-      "colab_cpu_ms_per_image": 5.209026336669922
+      "accuracy": 0.9003690036900369,
+      "macro_auc": 0.9775282250695797,
+      "agreement_with_keras": 0.974169741697417,
+      "max_prob_diff": 0.3609793782234192,
+      "mean_gradcam_diff": 0.038426272571086884,
+      "colab_cpu_ms_per_image": 6.146068572998047
     }
   },
   "tflite_io": {
@@ -165,9 +165,10 @@
   },
   "preprocessing": "bilinear resize to 224x224 -> uint8 -> float32 -> (x-127.5)/127.5",
   "config": {
-    "SEED": 42,
+    "SEED": 2,
+    "BACKBONE": "mobilenetv3_small",
     "SPLIT_SEED": 42,
-    "DATASET_FINGERPRINT": "78c87d6bc29b7368",
+    "DATASET_FINGERPRINT": "4392ef5012a1a66a",
     "SPLIT_FRACTIONS": {
       "train": 0.7,
       "val": 0.15,
@@ -189,7 +190,7 @@
   },
   "epochs_trained": {
     "stage1": 20,
-    "stage2": 52
+    "stage2": 59
   },
   "versions": {
     "tensorflow": "2.21.0",
